@@ -57,14 +57,8 @@ export function autoResolve(
     }
   }
 
-  // Average prices from last min(rounds.length, 6) rounds
-  const window = Math.min(rounds.length, 6);
-  const recent = rounds.slice(-window);
-  const avgPrices = new Array(n).fill(0);
-  for (const r of recent) {
-    for (let i = 0; i < n; i++) avgPrices[i] += r.prices[i];
-  }
-  for (let i = 0; i < n; i++) avgPrices[i] = Math.round(avgPrices[i] / window);
+  // Use the last round's prices — they're the most converged
+  const finalPrices = [...rounds[rounds.length - 1].prices];
 
   // Frequency-based assignment
   const freq: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
@@ -96,7 +90,7 @@ export function autoResolve(
 
   return {
     assignment,
-    prices: snapPrices(fixRounding(avgPrices, totalRent), totalRent),
+    prices: snapPrices(fixRounding(finalPrices, totalRent), totalRent),
   };
 }
 
