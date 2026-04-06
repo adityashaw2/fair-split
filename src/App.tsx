@@ -10,9 +10,9 @@ import type {
 import {
   initialPrices,
   computeNextPrices,
-  getStepForRound,
   isEnvyFree,
   fixRounding,
+  autoResolve,
   fallbackAllocation,
 } from "@/lib/algorithm";
 import {
@@ -28,7 +28,8 @@ import { ShareLinks } from "@/components/ShareLinks";
 import { MultiplayerView } from "@/components/MultiplayerView";
 import { Checkpoint } from "@/components/Checkpoint";
 
-const SOFT_LIMIT = 15; // suggest stopping, but don't force it
+const AUTO_RESOLVE_AFTER = 6; // auto-compute after this many rounds
+const SOFT_LIMIT = 15; // checkpoint for manual mode (if auto-resolve disabled)
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -111,13 +112,19 @@ export default function App() {
           assignment: choices,
           prices: fixRounding(currentPrices, config.totalRent),
           rounds: newRounds,
+          exactEnvyFree: true,
         });
         setPhase("result");
-      } else if (roundNum >= SOFT_LIMIT && roundNum % SOFT_LIMIT === 0) {
-        // Hit soft limit — advance prices but pause for checkpoint
-        const next = computeNextPrices(currentPrices, choices, config.totalRent, currentStep);
-        setCurrentPrices(fixRounding(next, config.totalRent));
-        setPhase("checkpoint");
+      } else if (roundNum >= AUTO_RESOLVE_AFTER) {
+        // Enough data — auto-resolve from preferences
+        const resolved = autoResolve(newRounds, config.totalRent);
+        setAllocation({
+          assignment: resolved.assignment,
+          prices: resolved.prices,
+          rounds: newRounds,
+          exactEnvyFree: false,
+        });
+        setPhase("result");
       } else {
         // Adaptive bisection: detect oscillation and halve step
         let nextStep = currentStep;
@@ -129,7 +136,6 @@ export default function App() {
           const prevDemand = [0, 0, 0];
           for (const r of rounds[rounds.length - 1].choices) prevDemand[r]++;
           const prevOver = prevDemand.findIndex((d) => d > 1);
-          // Oscillation: contested room flipped → we overshot → bisect
           if (prevOver >= 0 && overDemanded >= 0 && prevOver !== overDemanded) {
             nextStep = currentStep * 0.5;
           }

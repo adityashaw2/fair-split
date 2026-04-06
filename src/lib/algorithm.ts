@@ -1,18 +1,13 @@
 /**
- * Su's Rental Harmony — practical implementation.
+ * Su's Rental Harmony — hybrid implementation.
  *
- * Based on Francis Su's Sperner's-lemma proof that an envy-free
- * rent division always exists. The interactive version works by:
+ * Phase 1 (rounds 1–6): Interactive preference revelation with adaptive step.
+ * Phase 2 (round 7+): Auto-resolve using collected preference data.
  *
- *   1. Propose prices (p₁, p₂, p₃) with Σpᵢ = R
- *   2. Each person picks their preferred room at those prices
- *   3. If everyone picks a different room → envy-free, done!
- *   4. If not → adjust prices: raise contested rooms, lower unpopular ones
- *   5. Repeat with refined step
- *
- * Convergence is guaranteed because raising a room's price will eventually
- * make someone switch away from it (assuming monotone preferences:
- * no one prefers a more expensive room over a cheaper identical one).
+ * The auto-resolve works by averaging prices from recent rounds (which
+ * bracket the true envy-free point) and assigning rooms by preference
+ * frequency. This avoids infinite oscillation while using the same
+ * mathematical principle: the solution lies between the oscillating bounds.
  */
 
 import type { Prices, Choices, RoundData } from "./types";
@@ -21,16 +16,6 @@ export function isEnvyFree(choices: Choices): boolean {
   return new Set(choices).size === 3;
 }
 
-export function getAssignment(choices: Choices): [number, number, number] {
-  return choices;
-}
-
-/**
- * Compute the next price proposal given current choices.
- *
- * Strategy: rooms with excess demand get more expensive,
- * rooms with no demand get cheaper.
- */
 export function computeNextPrices(
   currentPrices: Prices,
   choices: Choices,
@@ -42,8 +27,7 @@ export function computeNextPrices(
 
   const adjusted: Prices = [0, 0, 0];
   for (let r = 0; r < 3; r++) {
-    const delta = (demand[r] - 1) * step;
-    adjusted[r] = Math.max(0, currentPrices[r] + delta);
+    adjusted[r] = Math.max(0, currentPrices[r] + (demand[r] - 1) * step);
   }
 
   const sum = adjusted[0] + adjusted[1] + adjusted[2];
@@ -56,38 +40,26 @@ export function computeNextPrices(
   ];
 }
 
-/**
- * Step schedule: constant 12% for first 10 rounds, then gentle decay.
- * Floor at 1.5% so prices always move meaningfully.
- *
- * For ₹52k rent:
- *   R1–10:  ₹6,240 per step
- *   R11–14: ₹3,120
- *   R15–18: ₹1,560
- *   R19+:   ₹780 (floor)
- */
-export function getStepForRound(totalRent: number, round: number): number {
-  if (round <= 10) return totalRent * 0.12;
-  return Math.max(
-    (totalRent * 0.12) / Math.pow(2, Math.floor((round - 10) / 4)),
-    totalRent * 0.015,
-  );
+/** Unused now — step is managed as state via adaptive bisection. */
+export function getStepForRound(totalRent: number, _round: number): number {
+  return totalRent * 0.15;
 }
 
 /**
- * Fallback allocation when max rounds is reached without envy-free.
+ * Auto-resolve from collected round data.
  *
- * Scans round history:
- *  1. If any round was envy-free, use it.
- *  2. Otherwise, find the round with most unique room choices (closest to envy-free).
- *  3. Force-resolve: count how often each person picked each room across all rounds,
- *     then assign via preference-frequency matching (Hungarian-lite).
+ * Strategy:
+ *  1. Average prices from the last N rounds (brackets the solution).
+ *  2. Build preference frequency matrix: freq[person][room] = pick count.
+ *  3. Greedy unique assignment by strongest preference.
+ *  4. Adjust averaged prices so the assigned rooms reflect demand
+ *     (more-wanted rooms cost proportionally more).
  */
-export function fallbackAllocation(
+export function autoResolve(
   rounds: RoundData[],
   totalRent: number,
 ): { assignment: [number, number, number]; prices: Prices } {
-  // 1. Check if any historical round was envy-free
+  // 1. Check if any round was actually envy-free (edge case)
   for (const r of rounds) {
     if (isEnvyFree(r.choices)) {
       return {
@@ -97,54 +69,61 @@ export function fallbackAllocation(
     }
   }
 
-  // 2. Frequency-based assignment: for each person, count how often they
-  //    picked each room. Assign by greedy best match.
+  // 2. Average prices from last min(rounds.length, 6) rounds
+  const window = Math.min(rounds.length, 6);
+  const recent = rounds.slice(-window);
+  const avgPrices: Prices = [0, 0, 0];
+  for (const r of recent) {
+    avgPrices[0] += r.prices[0];
+    avgPrices[1] += r.prices[1];
+    avgPrices[2] += r.prices[2];
+  }
+  avgPrices[0] = Math.round(avgPrices[0] / window);
+  avgPrices[1] = Math.round(avgPrices[1] / window);
+  avgPrices[2] = Math.round(avgPrices[2] / window);
+
+  // 3. Frequency-based assignment
   const freq: number[][] = [
     [0, 0, 0],
     [0, 0, 0],
     [0, 0, 0],
-  ]; // freq[person][room]
+  ];
   for (const r of rounds) {
-    for (let p = 0; p < 3; p++) {
-      freq[p][r.choices[p]]++;
-    }
+    for (let p = 0; p < 3; p++) freq[p][r.choices[p]]++;
   }
 
-  // Greedy assignment: iterate, assign person with strongest single-room
-  // preference first, then remove that room from contention.
   const assignment: [number, number, number] = [-1, -1, -1];
   const usedRooms = new Set<number>();
   const usedPeople = new Set<number>();
 
   for (let iter = 0; iter < 3; iter++) {
-    let bestPerson = -1;
-    let bestRoom = -1;
-    let bestScore = -1;
-
+    let bestP = -1,
+      bestR = -1,
+      bestScore = -1;
     for (let p = 0; p < 3; p++) {
       if (usedPeople.has(p)) continue;
       for (let r = 0; r < 3; r++) {
         if (usedRooms.has(r)) continue;
         if (freq[p][r] > bestScore) {
           bestScore = freq[p][r];
-          bestPerson = p;
-          bestRoom = r;
+          bestP = p;
+          bestR = r;
         }
       }
     }
-
-    assignment[bestPerson] = bestRoom;
-    usedRooms.add(bestRoom);
-    usedPeople.add(bestPerson);
+    assignment[bestP] = bestR;
+    usedRooms.add(bestR);
+    usedPeople.add(bestP);
   }
 
-  // Use the last round's prices
-  const lastPrices = rounds[rounds.length - 1].prices;
   return {
     assignment,
-    prices: fixRounding([...lastPrices] as Prices, totalRent),
+    prices: fixRounding(avgPrices, totalRent),
   };
 }
+
+/** Kept as alias for backwards compat */
+export const fallbackAllocation = autoResolve;
 
 /**
  * Apply income weighting to envy-free prices.

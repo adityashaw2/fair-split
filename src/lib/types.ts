@@ -32,6 +32,8 @@ export interface Allocation {
   prices: Prices;
   rounds: RoundData[];
   incomeAdjustedPrices?: Prices;
+  /** true if found via direct envy-free, false if auto-resolved */
+  exactEnvyFree?: boolean;
 }
 
 export type AppPhase = "setup" | "round" | "result";

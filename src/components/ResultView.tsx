@@ -62,10 +62,13 @@ export function ResultView({ config, allocation, onRestart }: Props) {
           >
             <Trophy className="w-12 h-12 text-accent mx-auto mb-3" />
           </motion.div>
-          <h2 className="text-2xl font-bold mb-1">Envy-Free Allocation</h2>
+          <h2 className="text-2xl font-bold mb-1">
+            {allocation.exactEnvyFree === false ? "Best-Fit Allocation" : "Envy-Free Allocation"}
+          </h2>
           <p className="text-sm text-text-secondary">
-            Solved in {rounds.length} round{rounds.length !== 1 ? "s" : ""} —
-            nobody wants to swap
+            {allocation.exactEnvyFree === false
+              ? `Computed from ${rounds.length} rounds of preferences`
+              : `Solved in ${rounds.length} round${rounds.length !== 1 ? "s" : ""} — nobody wants to swap`}
           </p>
         </motion.div>
 
@@ -135,7 +138,11 @@ export function ResultView({ config, allocation, onRestart }: Props) {
 
           <div className="flex items-center gap-2 text-success text-sm">
             <CheckCircle className="w-4 h-4" />
-            <span>Envy-free — no one wants to switch rooms</span>
+            <span>
+              {allocation.exactEnvyFree === false
+                ? "Best allocation based on revealed preferences"
+                : "Envy-free — no one wants to switch rooms"}
+            </span>
           </div>
 
           {hasIncomes && (

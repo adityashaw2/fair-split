@@ -42,6 +42,7 @@ interface GameState {
 
 const games = new Map<string, GameState>();
 const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+const AUTO_RESOLVE_AFTER = 6;
 const SOFT_LIMIT = 15;
 
 function cleanup() {
@@ -200,8 +201,20 @@ function tryAdvanceRound(game: GameState): void {
     }
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices, incomeAdjustedPrices };
+  } else if (game.currentRound >= AUTO_RESOLVE_AFTER) {
+    // Enough data — auto-resolve
+    const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+    let incomeAdjustedPrices: Prices | undefined;
+    if (game.config.useIncomeWeighting) {
+      const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
+      if (incomes.every((i) => i > 0)) {
+        incomeAdjustedPrices = applyIncomeWeighting(fb.prices, fb.assignment, incomes, game.config.totalRent);
+      }
+    }
+    game.status = "complete";
+    game.result = { assignment: fb.assignment, prices: fb.prices, incomeAdjustedPrices };
   } else {
-    // Adaptive bisection: halve step when contested room flips
+    // Adaptive bisection
     const demand = [0, 0, 0];
     for (const r of choices) demand[r]++;
     const overDemanded = demand.findIndex((d) => d > 1);
@@ -223,10 +236,6 @@ function tryAdvanceRound(game: GameState): void {
     game.currentPrices = fixRounding(next, game.config.totalRent);
     game.currentRound++;
     game.pendingChoices = {};
-
-    if (game.currentRound > SOFT_LIMIT && (game.currentRound - 1) % SOFT_LIMIT === 0) {
-      game.status = "checkpoint";
-    }
   }
 }
 
