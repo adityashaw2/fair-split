@@ -41,7 +41,7 @@ interface GameState {
 
 const games = new Map<string, GameState>();
 const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
-const MAX_ROUNDS = 15;
+const MAX_ROUNDS = 30;
 
 function cleanup() {
   const now = Date.now();
@@ -66,9 +66,10 @@ function isEnvyFree(choices: Choices): boolean {
 }
 
 function getStepForRound(totalRent: number, round: number): number {
+  if (round <= 10) return totalRent * 0.12;
   return Math.max(
-    (totalRent * 0.15) / Math.pow(2, Math.floor(round / 3)),
-    totalRent * 0.01,
+    (totalRent * 0.12) / Math.pow(2, Math.floor((round - 10) / 4)),
+    totalRent * 0.015,
   );
 }
 
@@ -129,6 +130,47 @@ function applyIncomeWeighting(
   );
 }
 
+// ── Fallback allocation ──────────────────────────────────────────────
+
+function fallbackAllocation(
+  rounds: RoundData[],
+  totalRent: number,
+): { assignment: Choices; prices: Prices } {
+  // Check if any historical round was envy-free
+  for (const r of rounds) {
+    if (isEnvyFree(r.choices)) {
+      return { assignment: [...r.choices] as Choices, prices: fixRounding([...r.prices] as Prices, totalRent) };
+    }
+  }
+
+  // Frequency-based: count how often each person picked each room
+  const freq = [[0,0,0],[0,0,0],[0,0,0]];
+  for (const r of rounds) {
+    for (let p = 0; p < 3; p++) freq[p][r.choices[p]]++;
+  }
+
+  // Greedy assignment by strongest preference
+  const assignment: Choices = [-1 as number, -1 as number, -1 as number] as unknown as Choices;
+  const usedRooms = new Set<number>();
+  const usedPeople = new Set<number>();
+
+  for (let iter = 0; iter < 3; iter++) {
+    let bestP = -1, bestR = -1, bestScore = -1;
+    for (let p = 0; p < 3; p++) {
+      if (usedPeople.has(p)) continue;
+      for (let r = 0; r < 3; r++) {
+        if (usedRooms.has(r)) continue;
+        if (freq[p][r] > bestScore) { bestScore = freq[p][r]; bestP = p; bestR = r; }
+      }
+    }
+    assignment[bestP] = bestR;
+    usedRooms.add(bestR);
+    usedPeople.add(bestP);
+  }
+
+  return { assignment, prices: fixRounding([...rounds[rounds.length - 1].prices] as Prices, totalRent) };
+}
+
 // ── Advance round logic ──────────────────────────────────────────────
 
 function tryAdvanceRound(game: GameState): void {
@@ -146,20 +188,28 @@ function tryAdvanceRound(game: GameState): void {
   };
   game.rounds.push(roundData);
 
-  if (envyFree || game.currentRound >= MAX_ROUNDS) {
-    const assignment = choices;
+  if (envyFree) {
     const finalPrices = fixRounding(game.currentPrices, game.config.totalRent);
-
     let incomeAdjustedPrices: Prices | undefined;
     if (game.config.useIncomeWeighting) {
       const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
       if (incomes.every((i) => i > 0)) {
-        incomeAdjustedPrices = applyIncomeWeighting(finalPrices, assignment, incomes, game.config.totalRent);
+        incomeAdjustedPrices = applyIncomeWeighting(finalPrices, choices, incomes, game.config.totalRent);
       }
     }
-
     game.status = "complete";
-    game.result = { assignment, prices: finalPrices, incomeAdjustedPrices };
+    game.result = { assignment: choices, prices: finalPrices, incomeAdjustedPrices };
+  } else if (game.currentRound >= MAX_ROUNDS) {
+    const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+    let incomeAdjustedPrices: Prices | undefined;
+    if (game.config.useIncomeWeighting) {
+      const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
+      if (incomes.every((i) => i > 0)) {
+        incomeAdjustedPrices = applyIncomeWeighting(fb.prices, fb.assignment, incomes, game.config.totalRent);
+      }
+    }
+    game.status = "complete";
+    game.result = { assignment: fb.assignment, prices: fb.prices, incomeAdjustedPrices };
   } else {
     const step = getStepForRound(game.config.totalRent, game.currentRound);
     const next = computeNextPrices(game.currentPrices, choices, game.config.totalRent, step);

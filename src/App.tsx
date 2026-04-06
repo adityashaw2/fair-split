@@ -13,6 +13,7 @@ import {
   getStepForRound,
   isEnvyFree,
   fixRounding,
+  fallbackAllocation,
 } from "@/lib/algorithm";
 import {
   createGame,
@@ -26,7 +27,7 @@ import { ResultView } from "@/components/ResultView";
 import { ShareLinks } from "@/components/ShareLinks";
 import { MultiplayerView } from "@/components/MultiplayerView";
 
-const MAX_ROUNDS = 15;
+const MAX_ROUNDS = 30;
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -102,10 +103,19 @@ export default function App() {
       const newRounds = [...rounds, roundData];
       setRounds(newRounds);
 
-      if (envyFree || roundNum >= MAX_ROUNDS) {
+      if (envyFree) {
         setAllocation({
           assignment: choices,
           prices: fixRounding(currentPrices, config.totalRent),
+          rounds: newRounds,
+        });
+        setPhase("result");
+      } else if (roundNum >= MAX_ROUNDS) {
+        // Fallback: find best allocation from history
+        const fb = fallbackAllocation(newRounds, config.totalRent);
+        setAllocation({
+          assignment: fb.assignment,
+          prices: fb.prices,
           rounds: newRounds,
         });
         setPhase("result");
