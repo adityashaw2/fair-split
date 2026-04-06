@@ -70,9 +70,16 @@ export function RoundView({
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold">Round {round}</h2>
-              <span className="text-xs text-text-muted px-2 py-0.5 rounded-full bg-surface-2">
-                of ~{totalRounds}
-              </span>
+              {round <= totalRounds && (
+                <span className="text-xs text-text-muted px-2 py-0.5 rounded-full bg-surface-2">
+                  of ~{totalRounds}
+                </span>
+              )}
+              {round > totalRounds && (
+                <span className="text-xs text-accent px-2 py-0.5 rounded-full bg-accent/10">
+                  overtime
+                </span>
+              )}
             </div>
             <p className="text-sm text-text-secondary mt-0.5">
               {config.people[currentPerson].name}, pick your preferred room

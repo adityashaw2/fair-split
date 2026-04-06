@@ -26,8 +26,9 @@ import { RoundView } from "@/components/RoundView";
 import { ResultView } from "@/components/ResultView";
 import { ShareLinks } from "@/components/ShareLinks";
 import { MultiplayerView } from "@/components/MultiplayerView";
+import { Checkpoint } from "@/components/Checkpoint";
 
-const MAX_ROUNDS = 30;
+const SOFT_LIMIT = 15; // suggest stopping, but don't force it
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -53,7 +54,7 @@ export default function App() {
   // ── State ─────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>("local");
   const [phase, setPhase] = useState<
-    AppPhase | "share-links" | "multiplayer-play"
+    AppPhase | "share-links" | "multiplayer-play" | "checkpoint"
   >("setup");
 
   // Local mode state
@@ -110,15 +111,12 @@ export default function App() {
           rounds: newRounds,
         });
         setPhase("result");
-      } else if (roundNum >= MAX_ROUNDS) {
-        // Fallback: find best allocation from history
-        const fb = fallbackAllocation(newRounds, config.totalRent);
-        setAllocation({
-          assignment: fb.assignment,
-          prices: fb.prices,
-          rounds: newRounds,
-        });
-        setPhase("result");
+      } else if (roundNum >= SOFT_LIMIT && roundNum % SOFT_LIMIT === 0) {
+        // Hit soft limit — ask if they want to continue or accept best
+        const step = getStepForRound(config.totalRent, roundNum);
+        const next = computeNextPrices(currentPrices, choices, config.totalRent, step);
+        setCurrentPrices(fixRounding(next, config.totalRent));
+        setPhase("checkpoint");
       } else {
         const step = getStepForRound(config.totalRent, roundNum);
         const next = computeNextPrices(currentPrices, choices, config.totalRent, step);
@@ -127,6 +125,23 @@ export default function App() {
     },
     [config, currentPrices, rounds],
   );
+
+  // ── Checkpoint handlers ────────────────────────────────────────────
+
+  const handleKeepGoing = useCallback(() => {
+    setPhase("round");
+  }, []);
+
+  const handleAcceptBest = useCallback(() => {
+    if (!config) return;
+    const fb = fallbackAllocation(rounds, config.totalRent);
+    setAllocation({
+      assignment: fb.assignment,
+      prices: fb.prices,
+      rounds,
+    });
+    setPhase("result");
+  }, [config, rounds]);
 
   // ── Multiplayer host handlers ─────────────────────────────────────
 
@@ -197,6 +212,17 @@ export default function App() {
         />
       );
 
+    case "checkpoint":
+      return (
+        <Checkpoint
+          config={config!}
+          rounds={rounds}
+          currentPrices={currentPrices}
+          onKeepGoing={handleKeepGoing}
+          onAcceptBest={handleAcceptBest}
+        />
+      );
+
     case "share-links":
       return (
         <ShareLinks game={gameResult!} onJoinAsHost={handleHostJoin} />
@@ -219,6 +245,8 @@ export default function App() {
       return (
         <MultiplayerView
           state={mpState}
+          gameId={activeGameId!}
+          token={activeToken!}
           error={mpError}
           submitting={submitting}
           onChoice={makeChoice}

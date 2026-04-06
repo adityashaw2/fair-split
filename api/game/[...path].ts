@@ -28,7 +28,7 @@ interface GameState {
   currentPrices: Prices;
   pendingChoices: Record<number, number>;
   rounds: RoundData[];
-  status: "waiting" | "in-round" | "complete";
+  status: "waiting" | "in-round" | "checkpoint" | "complete";
   result?: {
     assignment: Choices;
     prices: Prices;
@@ -41,7 +41,7 @@ interface GameState {
 
 const games = new Map<string, GameState>();
 const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
-const MAX_ROUNDS = 30;
+const SOFT_LIMIT = 15;
 
 function cleanup() {
   const now = Date.now();
@@ -199,17 +199,14 @@ function tryAdvanceRound(game: GameState): void {
     }
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices, incomeAdjustedPrices };
-  } else if (game.currentRound >= MAX_ROUNDS) {
-    const fb = fallbackAllocation(game.rounds, game.config.totalRent);
-    let incomeAdjustedPrices: Prices | undefined;
-    if (game.config.useIncomeWeighting) {
-      const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
-      if (incomes.every((i) => i > 0)) {
-        incomeAdjustedPrices = applyIncomeWeighting(fb.prices, fb.assignment, incomes, game.config.totalRent);
-      }
-    }
-    game.status = "complete";
-    game.result = { assignment: fb.assignment, prices: fb.prices, incomeAdjustedPrices };
+  } else if (game.currentRound >= SOFT_LIMIT && game.currentRound % SOFT_LIMIT === 0) {
+    // Hit soft limit — enter checkpoint, but advance prices for next round
+    const step = getStepForRound(game.config.totalRent, game.currentRound);
+    const next = computeNextPrices(game.currentPrices, choices, game.config.totalRent, step);
+    game.currentPrices = fixRounding(next, game.config.totalRent);
+    game.currentRound++;
+    game.pendingChoices = {};
+    game.status = "checkpoint";
   } else {
     const step = getStepForRound(game.config.totalRent, game.currentRound);
     const next = computeNextPrices(game.currentPrices, choices, game.config.totalRent, step);
@@ -224,6 +221,13 @@ function tryAdvanceRound(game: GameState): void {
 function stateForPlayer(game: GameState, playerIdx: number) {
   const choicesSubmitted = Object.keys(game.pendingChoices).map(Number);
 
+  // If at checkpoint, compute fallback preview
+  let checkpointPreview = undefined;
+  if (game.status === "checkpoint") {
+    const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+    checkpointPreview = { assignment: fb.assignment, prices: fb.prices };
+  }
+
   return {
     id: game.id,
     config: game.config,
@@ -231,10 +235,11 @@ function stateForPlayer(game: GameState, playerIdx: number) {
     currentRound: game.currentRound,
     currentPrices: game.currentPrices,
     myChoice: game.pendingChoices[playerIdx] ?? null,
-    choicesSubmitted, // which player indices have submitted
+    choicesSubmitted,
     rounds: game.rounds,
     status: game.status,
     result: game.result,
+    checkpointPreview,
     totalPlayers: 3,
   };
 }
@@ -331,6 +336,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       game.pendingChoices[playerIdx] = room;
       tryAdvanceRound(game);
 
+      return res.json(stateForPlayer(game, playerIdx));
+    }
+
+    // POST /api/game/continue { id, token }
+    if (route === "continue" && req.method === "POST") {
+      const { id, token } = req.body as { id: string; token: string };
+      const game = games.get(id);
+      if (!game) return res.status(404).json({ error: "Game not found or expired" });
+      if (game.status !== "checkpoint") return res.status(400).json({ error: "Game not at checkpoint" });
+
+      const playerIdx = game.tokens.indexOf(token);
+      if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
+
+      game.status = "in-round";
+      return res.json(stateForPlayer(game, playerIdx));
+    }
+
+    // POST /api/game/accept { id, token }
+    if (route === "accept" && req.method === "POST") {
+      const { id, token } = req.body as { id: string; token: string };
+      const game = games.get(id);
+      if (!game) return res.status(404).json({ error: "Game not found or expired" });
+      if (game.status !== "checkpoint") return res.status(400).json({ error: "Game not at checkpoint" });
+
+      const playerIdx = game.tokens.indexOf(token);
+      if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
+
+      const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+      let incomeAdjustedPrices: Prices | undefined;
+      if (game.config.useIncomeWeighting) {
+        const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
+        if (incomes.every((i) => i > 0)) {
+          incomeAdjustedPrices = applyIncomeWeighting(fb.prices, fb.assignment, incomes, game.config.totalRent);
+        }
+      }
+      game.status = "complete";
+      game.result = { assignment: fb.assignment, prices: fb.prices, incomeAdjustedPrices };
       return res.json(stateForPlayer(game, playerIdx));
     }
 

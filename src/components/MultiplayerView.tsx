@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Check, Users, Loader2, AlertCircle, Wifi, WifiOff } from "lucide-react";
+import { Clock, Check, Users, Loader2, AlertCircle, Wifi, WifiOff, Pause, ArrowRight, CheckCircle } from "lucide-react";
 import type { GameStateResponse } from "@/lib/multiplayer";
+import { continueGame, acceptBest } from "@/lib/multiplayer";
 import { ROOM_COLORS, PERSON_COLORS } from "@/lib/constants";
 import { formatCurrency } from "@/lib/algorithm";
 import { ResultView } from "./ResultView";
 
 interface Props {
   state: GameStateResponse;
+  gameId: string;
+  token: string;
   error: string | null;
   submitting: boolean;
   onChoice: (room: number) => void;
@@ -15,12 +19,15 @@ interface Props {
 
 export function MultiplayerView({
   state,
+  gameId,
+  token,
   error,
   submitting,
   onChoice,
   onRestart,
 }: Props) {
-  const { config, playerIndex, currentRound, currentPrices, myChoice, choicesSubmitted, status, result } = state;
+  const [acting, setActing] = useState(false);
+  const { config, playerIndex, currentRound, currentPrices, myChoice, choicesSubmitted, status, result, checkpointPreview } = state;
   const myName = config.people[playerIndex].name;
 
   // Game complete → show result
@@ -35,6 +42,58 @@ export function MultiplayerView({
         }}
         onRestart={onRestart}
       />
+    );
+  }
+
+  // Checkpoint — ask to continue or accept
+  if (status === "checkpoint" && checkpointPreview) {
+    const handleContinue = async () => {
+      setActing(true);
+      try { await continueGame(gameId, token); } catch {}
+      setActing(false);
+    };
+    const handleAccept = async () => {
+      setActing(true);
+      try { await acceptBest(gameId, token); } catch {}
+      setActing(false);
+    };
+
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center p-4 sm:p-6">
+        <motion.div className="w-full max-w-lg" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <div className="text-center mb-6">
+            <Pause className="w-10 h-10 text-accent mx-auto mb-3" />
+            <h2 className="text-xl font-bold mb-1">{state.rounds.length} rounds — no envy-free split yet</h2>
+            <p className="text-sm text-text-secondary">Keep going or accept the best allocation so far?</p>
+          </div>
+          <div className="bg-surface border border-border rounded-xl p-4 mb-6">
+            <p className="text-xs text-text-muted uppercase tracking-wider mb-3">Best allocation</p>
+            {config.people.map((person, pIdx) => {
+              const roomIdx = checkpointPreview.assignment[pIdx];
+              const room = config.rooms[roomIdx];
+              const color = ROOM_COLORS[roomIdx];
+              return (
+                <div key={pIdx} className="flex items-center justify-between py-1.5">
+                  <span className={`text-sm ${PERSON_COLORS[pIdx]}`}>{person.name}</span>
+                  <span className={`text-sm font-semibold ${color.text}`}>
+                    {room.name} — {formatCurrency(checkpointPreview.prices[roomIdx])}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="space-y-3">
+            <button onClick={handleContinue} disabled={acting}
+              className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-black font-semibold rounded-lg py-3 transition-colors disabled:opacity-50">
+              Keep going <ArrowRight className="w-4 h-4" />
+            </button>
+            <button onClick={handleAccept} disabled={acting}
+              className="w-full flex items-center justify-center gap-2 bg-surface hover:bg-surface-2 border border-border text-text font-medium rounded-lg py-3 transition-colors disabled:opacity-50">
+              <CheckCircle className="w-4 h-4" /> Accept this
+            </button>
+          </div>
+        </motion.div>
+      </div>
     );
   }
 
