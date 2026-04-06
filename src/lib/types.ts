@@ -8,14 +8,14 @@ export interface Room {
 }
 
 export interface GameConfig {
-  people: [Person, Person, Person];
-  rooms: [Room, Room, Room];
+  people: Person[];
+  rooms: Room[];
   totalRent: number;
 }
 
-export type Prices = [number, number, number];
+export type Prices = number[];
 /** choices[personIndex] = roomIndex they prefer */
-export type Choices = [number, number, number];
+export type Choices = number[];
 
 export interface RoundData {
   round: number;
@@ -26,7 +26,7 @@ export interface RoundData {
 
 export interface Allocation {
   /** assignment[personIndex] = roomIndex */
-  assignment: [number, number, number];
+  assignment: number[];
   prices: Prices;
   rounds: RoundData[];
   /** true if found via direct envy-free, false if auto-resolved */

@@ -14,11 +14,11 @@ export interface GameStateResponse {
   rounds: RoundData[];
   status: "waiting" | "in-round" | "checkpoint" | "complete";
   result?: {
-    assignment: [number, number, number];
+    assignment: number[];
     prices: Prices;
   };
   checkpointPreview?: {
-    assignment: [number, number, number];
+    assignment: number[];
     prices: Prices;
   };
   totalPlayers: number;
@@ -26,8 +26,8 @@ export interface GameStateResponse {
 
 export interface CreateGameResult {
   gameId: string;
-  tokens: [string, string, string];
-  playerNames: [string, string, string];
+  tokens: string[];
+  playerNames: string[];
 }
 
 export async function createGame(

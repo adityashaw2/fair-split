@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Pause, ArrowRight, CheckCircle } from "lucide-react";
 import type { GameConfig, RoundData, Prices } from "@/lib/types";
 import { fallbackAllocation, formatCurrency } from "@/lib/algorithm";
-import { ROOM_COLORS, PERSON_COLORS } from "@/lib/constants";
+import { roomColor, personColor } from "@/lib/constants";
 
 interface Props {
   config: GameConfig;
@@ -19,7 +19,7 @@ export function Checkpoint({
   onKeepGoing,
   onAcceptBest,
 }: Props) {
-  const fb = fallbackAllocation(rounds, config.totalRent);
+  const fb = fallbackAllocation(rounds, config.totalRent, config.people.length);
   const roundCount = rounds.length;
 
   return (
@@ -51,14 +51,14 @@ export function Checkpoint({
             {config.people.map((person, pIdx) => {
               const roomIdx = fb.assignment[pIdx];
               const room = config.rooms[roomIdx];
-              const color = ROOM_COLORS[roomIdx];
+              const color = roomColor(roomIdx);
               return (
                 <div
                   key={pIdx}
                   className="flex items-center justify-between py-1"
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`text-sm font-medium ${PERSON_COLORS[pIdx]}`}>
+                    <span className={`text-sm font-medium ${personColor(pIdx)}`}>
                       {person.name}
                     </span>
                     <span className="text-text-muted">→</span>

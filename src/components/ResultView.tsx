@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Trophy, RotateCcw, Share2, CheckCircle } from "lucide-react";
 import type { GameConfig, Allocation } from "@/lib/types";
-import { ROOM_COLORS, PERSON_COLORS } from "@/lib/constants";
+import { roomColor, personColor } from "@/lib/constants";
 import { formatCurrency } from "@/lib/algorithm";
 import { TriangleViz } from "./TriangleViz";
 
@@ -14,6 +14,7 @@ interface Props {
 export function ResultView({ config, allocation, onRestart }: Props) {
   const { assignment, prices, rounds } = allocation;
   const displayPrices = prices;
+  const n = config.people.length;
 
   const handleShare = async () => {
     const lines = config.people.map((person, pIdx) => {
@@ -65,7 +66,7 @@ export function ResultView({ config, allocation, onRestart }: Props) {
           {config.people.map((person, pIdx) => {
             const roomIdx = assignment[pIdx];
             const room = config.rooms[roomIdx];
-            const color = ROOM_COLORS[roomIdx];
+            const color = roomColor(roomIdx);
             const price = displayPrices[roomIdx];
             const pct = ((price / config.totalRent) * 100).toFixed(1);
 
@@ -79,9 +80,7 @@ export function ResultView({ config, allocation, onRestart }: Props) {
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <p
-                      className={`text-sm font-medium ${PERSON_COLORS[pIdx]}`}
-                    >
+                    <p className={`text-sm font-medium ${personColor(pIdx)}`}>
                       {person.name}
                     </p>
                     <p className={`text-lg font-bold ${color.text}`}>
@@ -113,9 +112,7 @@ export function ResultView({ config, allocation, onRestart }: Props) {
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-text-secondary">Total</span>
             <span className="font-bold">
-              {formatCurrency(
-                displayPrices[0] + displayPrices[1] + displayPrices[2],
-              )}
+              {formatCurrency(displayPrices.reduce((a, b) => a + b, 0))}
             </span>
           </div>
 
@@ -127,11 +124,10 @@ export function ResultView({ config, allocation, onRestart }: Props) {
                 : "Envy-free — no one wants to switch rooms"}
             </span>
           </div>
-
         </motion.div>
 
-        {/* Triangle visualization */}
-        {rounds.length > 1 && (
+        {/* Triangle visualization (only for 3 rooms) */}
+        {n === 3 && rounds.length > 1 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

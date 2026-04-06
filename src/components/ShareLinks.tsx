@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Copy, Check, Link2, Users, ArrowRight } from "lucide-react";
 import type { CreateGameResult } from "@/lib/multiplayer";
 import { buildPlayerLink } from "@/lib/multiplayer";
-import { PERSON_COLORS } from "@/lib/constants";
+import { personColor } from "@/lib/constants";
 
 interface Props {
   game: CreateGameResult;
@@ -13,11 +13,11 @@ interface Props {
 export function ShareLinks({ game, onJoinAsHost }: Props) {
   const [copied, setCopied] = useState<number | null>(null);
 
-  // Player 0 is the host — links for players 1 and 2
-  const links = [1, 2].map((i) => ({
-    playerIndex: i,
-    name: game.playerNames[i],
-    url: buildPlayerLink(game.gameId, game.tokens[i]),
+  // Player 0 is the host — links for players 1..N-1
+  const links = game.playerNames.slice(1).map((name, i) => ({
+    playerIndex: i + 1,
+    name,
+    url: buildPlayerLink(game.gameId, game.tokens[i + 1]),
   }));
 
   const copyLink = async (idx: number, url: string) => {
@@ -67,7 +67,7 @@ export function ShareLinks({ game, onJoinAsHost }: Props) {
                   <div className="w-7 h-7 rounded-full bg-surface-3 flex items-center justify-center text-xs font-bold">
                     {playerIndex + 1}
                   </div>
-                  <span className={`font-semibold ${PERSON_COLORS[playerIndex]}`}>
+                  <span className={`font-semibold ${personColor(playerIndex)}`}>
                     {name}
                   </span>
                 </div>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, RotateCcw } from "lucide-react";
 import type { GameConfig, Prices, Choices } from "@/lib/types";
-import { ROOM_COLORS, PERSON_COLORS } from "@/lib/constants";
+import { roomColor, personColor } from "@/lib/constants";
 import { formatCurrency } from "@/lib/algorithm";
 
 interface Props {
@@ -22,21 +22,18 @@ export function RoundView({
   onSubmitChoices,
   onRestart,
 }: Props) {
-  // Track which person is currently choosing
+  const n = config.people.length;
   const [currentPerson, setCurrentPerson] = useState(0);
-  const [choices, setChoices] = useState<(number | null)[]>([
-    null,
-    null,
-    null,
-  ]);
+  const [choices, setChoices] = useState<(number | null)[]>(
+    new Array(n).fill(null),
+  );
 
   const handlePickRoom = (roomIdx: number) => {
     const next = [...choices];
     next[currentPerson] = roomIdx;
     setChoices(next);
 
-    if (currentPerson < 2) {
-      // Move to next person after a brief pause
+    if (currentPerson < n - 1) {
       setTimeout(() => setCurrentPerson(currentPerson + 1), 300);
     }
   };
@@ -46,9 +43,8 @@ export function RoundView({
   const handleSubmit = () => {
     if (!allChosen) return;
     onSubmitChoices(choices as Choices);
-    // Reset for next round
     setCurrentPerson(0);
-    setChoices([null, null, null]);
+    setChoices(new Array(n).fill(null));
   };
 
   const handleResetPerson = (pIdx: number) => {
@@ -95,12 +91,14 @@ export function RoundView({
         </div>
 
         {/* Progress dots for people */}
-        <div className="flex gap-2 mb-6">
+        <div className={`grid gap-2 mb-6 ${n <= 4 ? `grid-cols-${n}` : "grid-cols-3 sm:grid-cols-4"}`}
+             style={n > 4 ? { gridTemplateColumns: `repeat(${Math.min(n, 5)}, 1fr)` } : undefined}
+        >
           {config.people.map((person, i) => (
             <button
               key={i}
               onClick={() => choices[i] !== null && handleResetPerson(i)}
-              className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-sm transition-all ${
                 i === currentPerson
                   ? "border-accent/50 bg-accent/5"
                   : choices[i] !== null
@@ -109,7 +107,7 @@ export function RoundView({
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                   choices[i] !== null
                     ? "bg-success text-black"
                     : i === currentPerson
@@ -136,7 +134,7 @@ export function RoundView({
         <div className="space-y-3">
           <AnimatePresence mode="wait">
             {config.rooms.map((room, rIdx) => {
-              const color = ROOM_COLORS[rIdx];
+              const color = roomColor(rIdx);
               const isChosenByCurrent = choices[currentPerson] === rIdx;
               const chosenByOther = choices.findIndex(
                 (c, i) => c === rIdx && i !== currentPerson,
@@ -217,13 +215,13 @@ export function RoundView({
                 {config.people.map((person, pIdx) => {
                   const roomIdx = choices[pIdx]!;
                   const room = config.rooms[roomIdx];
-                  const color = ROOM_COLORS[roomIdx];
+                  const color = roomColor(roomIdx);
                   return (
                     <div
                       key={pIdx}
                       className="flex items-center justify-between py-1"
                     >
-                      <span className={`text-sm ${PERSON_COLORS[pIdx]}`}>
+                      <span className={`text-sm ${personColor(pIdx)}`}>
                         {person.name}
                       </span>
                       <span className={`text-sm font-medium ${color.text}`}>

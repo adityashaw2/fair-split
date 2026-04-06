@@ -18,7 +18,6 @@ import {
 import {
   createGame,
   useGamePolling,
-  buildPlayerLink,
   type CreateGameResult,
 } from "@/lib/multiplayer";
 import { Setup } from "@/components/Setup";
@@ -29,7 +28,7 @@ import { MultiplayerView } from "@/components/MultiplayerView";
 import { Checkpoint } from "@/components/Checkpoint";
 
 const AUTO_RESOLVE_AFTER = 6; // auto-compute after this many rounds
-const SOFT_LIMIT = 15; // checkpoint for manual mode (if auto-resolve disabled)
+const SOFT_LIMIT = 15; // checkpoint for manual mode
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -47,7 +46,6 @@ export default function App() {
       setJoinToken(token);
       setMode("multiplayer-player");
       setPhase("multiplayer-play");
-      // Clean URL
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -60,7 +58,7 @@ export default function App() {
 
   // Local mode state
   const [config, setConfig] = useState<GameConfig | null>(null);
-  const [currentPrices, setCurrentPrices] = useState<Prices>([0, 0, 0]);
+  const [currentPrices, setCurrentPrices] = useState<Prices>([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [rounds, setRounds] = useState<RoundData[]>([]);
   const [allocation, setAllocation] = useState<Allocation | null>(null);
@@ -83,9 +81,10 @@ export default function App() {
   // ── Local mode handlers ───────────────────────────────────────────
 
   const handleStartLocal = useCallback((cfg: GameConfig) => {
+    const n = cfg.people.length;
     setMode("local");
     setConfig(cfg);
-    const prices = initialPrices(cfg.totalRent);
+    const prices = initialPrices(cfg.totalRent, n);
     setCurrentPrices(prices);
     setCurrentStep(cfg.totalRent * 0.15);
     setRounds([]);
@@ -96,6 +95,7 @@ export default function App() {
   const handleChoices = useCallback(
     (choices: Choices) => {
       if (!config) return;
+      const n = config.people.length;
       const roundNum = rounds.length + 1;
       const envyFree = isEnvyFree(choices);
       const roundData: RoundData = {
@@ -116,8 +116,7 @@ export default function App() {
         });
         setPhase("result");
       } else if (roundNum >= AUTO_RESOLVE_AFTER) {
-        // Enough data — auto-resolve from preferences
-        const resolved = autoResolve(newRounds, config.totalRent);
+        const resolved = autoResolve(newRounds, config.totalRent, n);
         setAllocation({
           assignment: resolved.assignment,
           prices: resolved.prices,
@@ -128,14 +127,14 @@ export default function App() {
       } else {
         // Adaptive bisection: detect oscillation and halve step
         let nextStep = currentStep;
-        const demand = [0, 0, 0];
+        const demand = new Array(n).fill(0);
         for (const r of choices) demand[r]++;
-        const overDemanded = demand.findIndex((d) => d > 1);
+        const overDemanded = demand.findIndex((d: number) => d > 1);
 
         if (rounds.length > 0) {
-          const prevDemand = [0, 0, 0];
+          const prevDemand = new Array(n).fill(0);
           for (const r of rounds[rounds.length - 1].choices) prevDemand[r]++;
-          const prevOver = prevDemand.findIndex((d) => d > 1);
+          const prevOver = prevDemand.findIndex((d: number) => d > 1);
           if (prevOver >= 0 && overDemanded >= 0 && prevOver !== overDemanded) {
             nextStep = currentStep * 0.5;
           }
@@ -158,7 +157,8 @@ export default function App() {
 
   const handleAcceptBest = useCallback(() => {
     if (!config) return;
-    const fb = fallbackAllocation(rounds, config.totalRent);
+    const n = config.people.length;
+    const fb = fallbackAllocation(rounds, config.totalRent, n);
     setAllocation({
       assignment: fb.assignment,
       prices: fb.prices,

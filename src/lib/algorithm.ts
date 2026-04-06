@@ -1,19 +1,15 @@
 /**
- * Su's Rental Harmony — hybrid implementation.
+ * Su's Rental Harmony — generalized for N roommates.
  *
  * Phase 1 (rounds 1–6): Interactive preference revelation with adaptive step.
  * Phase 2 (round 7+): Auto-resolve using collected preference data.
- *
- * The auto-resolve works by averaging prices from recent rounds (which
- * bracket the true envy-free point) and assigning rooms by preference
- * frequency. This avoids infinite oscillation while using the same
- * mathematical principle: the solution lies between the oscillating bounds.
  */
 
 import type { Prices, Choices, RoundData } from "./types";
 
 export function isEnvyFree(choices: Choices): boolean {
-  return new Set(choices).size === 3;
+  const n = choices.length;
+  return new Set(choices).size === n;
 }
 
 export function computeNextPrices(
@@ -22,27 +18,19 @@ export function computeNextPrices(
   totalRent: number,
   step: number,
 ): Prices {
-  const demand = [0, 0, 0];
+  const n = currentPrices.length;
+  const demand = new Array(n).fill(0);
   for (const room of choices) demand[room]++;
 
-  const adjusted: Prices = [0, 0, 0];
-  for (let r = 0; r < 3; r++) {
+  const adjusted = new Array(n).fill(0);
+  for (let r = 0; r < n; r++) {
     adjusted[r] = Math.max(0, currentPrices[r] + (demand[r] - 1) * step);
   }
 
-  const sum = adjusted[0] + adjusted[1] + adjusted[2];
-  if (sum === 0) return [totalRent / 3, totalRent / 3, totalRent / 3];
+  const sum = adjusted.reduce((a: number, b: number) => a + b, 0);
+  if (sum === 0) return new Array(n).fill(Math.round(totalRent / n));
   const scale = totalRent / sum;
-  return [
-    Math.round(adjusted[0] * scale),
-    Math.round(adjusted[1] * scale),
-    Math.round(adjusted[2] * scale),
-  ];
-}
-
-/** Unused now — step is managed as state via adaptive bisection. */
-export function getStepForRound(totalRent: number, _round: number): number {
-  return totalRent * 0.15;
+  return adjusted.map((p: number) => Math.round(p * scale));
 }
 
 /**
@@ -52,57 +40,46 @@ export function getStepForRound(totalRent: number, _round: number): number {
  *  1. Average prices from the last N rounds (brackets the solution).
  *  2. Build preference frequency matrix: freq[person][room] = pick count.
  *  3. Greedy unique assignment by strongest preference.
- *  4. Adjust averaged prices so the assigned rooms reflect demand
- *     (more-wanted rooms cost proportionally more).
  */
 export function autoResolve(
   rounds: RoundData[],
   totalRent: number,
-): { assignment: [number, number, number]; prices: Prices } {
-  // 1. Check if any round was actually envy-free (edge case)
+  n: number,
+): { assignment: number[]; prices: Prices } {
+  // Check if any round was actually envy-free
   for (const r of rounds) {
     if (isEnvyFree(r.choices)) {
       return {
-        assignment: [...r.choices] as [number, number, number],
-        prices: fixRounding([...r.prices] as Prices, totalRent),
+        assignment: [...r.choices],
+        prices: fixRounding([...r.prices], totalRent),
       };
     }
   }
 
-  // 2. Average prices from last min(rounds.length, 6) rounds
+  // Average prices from last min(rounds.length, 6) rounds
   const window = Math.min(rounds.length, 6);
   const recent = rounds.slice(-window);
-  const avgPrices: Prices = [0, 0, 0];
+  const avgPrices = new Array(n).fill(0);
   for (const r of recent) {
-    avgPrices[0] += r.prices[0];
-    avgPrices[1] += r.prices[1];
-    avgPrices[2] += r.prices[2];
+    for (let i = 0; i < n; i++) avgPrices[i] += r.prices[i];
   }
-  avgPrices[0] = Math.round(avgPrices[0] / window);
-  avgPrices[1] = Math.round(avgPrices[1] / window);
-  avgPrices[2] = Math.round(avgPrices[2] / window);
+  for (let i = 0; i < n; i++) avgPrices[i] = Math.round(avgPrices[i] / window);
 
-  // 3. Frequency-based assignment
-  const freq: number[][] = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
-  ];
+  // Frequency-based assignment
+  const freq: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
   for (const r of rounds) {
-    for (let p = 0; p < 3; p++) freq[p][r.choices[p]]++;
+    for (let p = 0; p < n; p++) freq[p][r.choices[p]]++;
   }
 
-  const assignment: [number, number, number] = [-1, -1, -1];
+  const assignment = new Array(n).fill(-1);
   const usedRooms = new Set<number>();
   const usedPeople = new Set<number>();
 
-  for (let iter = 0; iter < 3; iter++) {
-    let bestP = -1,
-      bestR = -1,
-      bestScore = -1;
-    for (let p = 0; p < 3; p++) {
+  for (let iter = 0; iter < n; iter++) {
+    let bestP = -1, bestR = -1, bestScore = -1;
+    for (let p = 0; p < n; p++) {
       if (usedPeople.has(p)) continue;
-      for (let r = 0; r < 3; r++) {
+      for (let r = 0; r < n; r++) {
         if (usedRooms.has(r)) continue;
         if (freq[p][r] > bestScore) {
           bestScore = freq[p][r];
@@ -122,22 +99,27 @@ export function autoResolve(
   };
 }
 
-/** Kept as alias for backwards compat */
+/** Alias for backwards compat */
 export const fallbackAllocation = autoResolve;
 
 export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-export function initialPrices(totalRent: number): Prices {
-  const each = Math.round(totalRent / 3);
-  return [each, each, totalRent - 2 * each];
+export function initialPrices(totalRent: number, n: number): Prices {
+  const each = Math.round(totalRent / n);
+  const prices = new Array(n).fill(each);
+  // Fix rounding so sum = totalRent
+  prices[n - 1] = totalRent - each * (n - 1);
+  return prices;
 }
 
 export function fixRounding(prices: Prices, totalRent: number): Prices {
-  const diff = totalRent - (prices[0] + prices[1] + prices[2]);
-  const maxIdx = prices.indexOf(Math.max(...prices));
-  const fixed: Prices = [...prices];
+  const sum = prices.reduce((a, b) => a + b, 0);
+  const diff = totalRent - sum;
+  if (diff === 0) return prices;
+  const fixed = [...prices];
+  const maxIdx = fixed.indexOf(Math.max(...fixed));
   fixed[maxIdx] += diff;
   return fixed;
 }

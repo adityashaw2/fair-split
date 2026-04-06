@@ -5,12 +5,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 interface Person { name: string }
 interface Room { name: string; description: string }
 interface GameConfig {
-  people: [Person, Person, Person];
-  rooms: [Room, Room, Room];
+  people: Person[];
+  rooms: Room[];
   totalRent: number;
 }
-type Prices = [number, number, number];
-type Choices = [number, number, number];
+type Prices = number[];
+type Choices = number[];
 
 interface RoundData {
   round: number;
@@ -22,7 +22,8 @@ interface RoundData {
 interface GameState {
   id: string;
   config: GameConfig;
-  tokens: [string, string, string];
+  tokens: string[];
+  n: number;
   currentRound: number;
   currentPrices: Prices;
   currentStep: number;
@@ -62,15 +63,7 @@ function generateId(len = 8): string {
 // ── Algorithm (duplicated from frontend for serverless bundling) ──────
 
 function isEnvyFree(choices: Choices): boolean {
-  return new Set(choices).size === 3;
-}
-
-function getStepForRound(totalRent: number, round: number): number {
-  if (round <= 10) return totalRent * 0.12;
-  return Math.max(
-    (totalRent * 0.12) / Math.pow(2, Math.floor((round - 10) / 4)),
-    totalRent * 0.015,
-  );
+  return new Set(choices).size === choices.length;
 }
 
 function computeNextPrices(
@@ -79,28 +72,27 @@ function computeNextPrices(
   totalRent: number,
   step: number,
 ): Prices {
-  const demand = [0, 0, 0];
+  const n = currentPrices.length;
+  const demand = new Array(n).fill(0);
   for (const room of choices) demand[room]++;
 
-  const adjusted: Prices = [0, 0, 0];
-  for (let r = 0; r < 3; r++) {
+  const adjusted = new Array(n).fill(0);
+  for (let r = 0; r < n; r++) {
     adjusted[r] = Math.max(0, currentPrices[r] + (demand[r] - 1) * step);
   }
 
-  const sum = adjusted[0] + adjusted[1] + adjusted[2];
-  if (sum === 0) return [totalRent / 3, totalRent / 3, totalRent / 3];
+  const sum = adjusted.reduce((a: number, b: number) => a + b, 0);
+  if (sum === 0) return new Array(n).fill(Math.round(totalRent / n));
   const scale = totalRent / sum;
-  return [
-    Math.round(adjusted[0] * scale),
-    Math.round(adjusted[1] * scale),
-    Math.round(adjusted[2] * scale),
-  ];
+  return adjusted.map((p: number) => Math.round(p * scale));
 }
 
 function fixRounding(prices: Prices, totalRent: number): Prices {
-  const diff = totalRent - (prices[0] + prices[1] + prices[2]);
-  const maxIdx = prices.indexOf(Math.max(...prices));
-  const fixed: Prices = [...prices];
+  const sum = prices.reduce((a, b) => a + b, 0);
+  const diff = totalRent - sum;
+  if (diff === 0) return prices;
+  const fixed = [...prices];
+  const maxIdx = fixed.indexOf(Math.max(...fixed));
   fixed[maxIdx] += diff;
   return fixed;
 }
@@ -110,30 +102,31 @@ function fixRounding(prices: Prices, totalRent: number): Prices {
 function fallbackAllocation(
   rounds: RoundData[],
   totalRent: number,
+  n: number,
 ): { assignment: Choices; prices: Prices } {
   // Check if any historical round was envy-free
   for (const r of rounds) {
     if (isEnvyFree(r.choices)) {
-      return { assignment: [...r.choices] as Choices, prices: fixRounding([...r.prices] as Prices, totalRent) };
+      return { assignment: [...r.choices], prices: fixRounding([...r.prices], totalRent) };
     }
   }
 
   // Frequency-based: count how often each person picked each room
-  const freq = [[0,0,0],[0,0,0],[0,0,0]];
+  const freq: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
   for (const r of rounds) {
-    for (let p = 0; p < 3; p++) freq[p][r.choices[p]]++;
+    for (let p = 0; p < n; p++) freq[p][r.choices[p]]++;
   }
 
   // Greedy assignment by strongest preference
-  const assignment: Choices = [-1 as number, -1 as number, -1 as number] as unknown as Choices;
+  const assignment = new Array(n).fill(-1);
   const usedRooms = new Set<number>();
   const usedPeople = new Set<number>();
 
-  for (let iter = 0; iter < 3; iter++) {
+  for (let iter = 0; iter < n; iter++) {
     let bestP = -1, bestR = -1, bestScore = -1;
-    for (let p = 0; p < 3; p++) {
+    for (let p = 0; p < n; p++) {
       if (usedPeople.has(p)) continue;
-      for (let r = 0; r < 3; r++) {
+      for (let r = 0; r < n; r++) {
         if (usedRooms.has(r)) continue;
         if (freq[p][r] > bestScore) { bestScore = freq[p][r]; bestP = p; bestR = r; }
       }
@@ -143,16 +136,18 @@ function fallbackAllocation(
     usedPeople.add(bestP);
   }
 
-  return { assignment, prices: fixRounding([...rounds[rounds.length - 1].prices] as Prices, totalRent) };
+  return { assignment, prices: fixRounding([...rounds[rounds.length - 1].prices], totalRent) };
 }
 
 // ── Advance round logic ──────────────────────────────────────────────
 
 function tryAdvanceRound(game: GameState): void {
   const pending = game.pendingChoices;
-  if (Object.keys(pending).length < 3) return;
+  if (Object.keys(pending).length < game.n) return;
 
-  const choices: Choices = [pending[0], pending[1], pending[2]];
+  const choices: Choices = [];
+  for (let i = 0; i < game.n; i++) choices.push(pending[i]);
+
   const envyFree = isEnvyFree(choices);
 
   const roundData: RoundData = {
@@ -169,21 +164,22 @@ function tryAdvanceRound(game: GameState): void {
     game.result = { assignment: choices, prices: finalPrices };
   } else if (game.currentRound >= AUTO_RESOLVE_AFTER) {
     // Enough data — auto-resolve
-    const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+    const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
     game.status = "complete";
     game.result = { assignment: fb.assignment, prices: fb.prices };
   } else {
     // Adaptive bisection
-    const demand = [0, 0, 0];
+    const n = game.n;
+    const demand = new Array(n).fill(0);
     for (const r of choices) demand[r]++;
-    const overDemanded = demand.findIndex((d) => d > 1);
+    const overDemanded = demand.findIndex((d: number) => d > 1);
 
     if (game.rounds.length > 1) {
       const prevChoices = game.rounds[game.rounds.length - 2]?.choices;
       if (prevChoices) {
-        const prevDemand = [0, 0, 0];
+        const prevDemand = new Array(n).fill(0);
         for (const r of prevChoices) prevDemand[r]++;
-        const prevOver = prevDemand.findIndex((d) => d > 1);
+        const prevOver = prevDemand.findIndex((d: number) => d > 1);
         if (prevOver >= 0 && overDemanded >= 0 && prevOver !== overDemanded) {
           game.currentStep = game.currentStep * 0.5;
         }
@@ -203,10 +199,9 @@ function tryAdvanceRound(game: GameState): void {
 function stateForPlayer(game: GameState, playerIdx: number) {
   const choicesSubmitted = Object.keys(game.pendingChoices).map(Number);
 
-  // If at checkpoint, compute fallback preview
   let checkpointPreview = undefined;
   if (game.status === "checkpoint") {
-    const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+    const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
     checkpointPreview = { assignment: fb.assignment, prices: fb.prices };
   }
 
@@ -222,7 +217,7 @@ function stateForPlayer(game: GameState, playerIdx: number) {
     status: game.status,
     result: game.result,
     checkpointPreview,
-    totalPlayers: 3,
+    totalPlayers: game.n,
   };
 }
 
@@ -242,7 +237,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   cleanup();
 
-  // Vercel catch-all: extract path from URL since query.path can be unreliable
   const url = new URL(req.url || "/", `https://${req.headers.host}`);
   const route = url.pathname.replace(/^\/api\/game\/?/, "").replace(/\/$/, "");
 
@@ -254,22 +248,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Invalid config" });
       }
 
-      const id = generateId(6);
-      const tokens: [string, string, string] = [
-        generateId(12),
-        generateId(12),
-        generateId(12),
-      ];
+      const n = config.people.length;
+      if (n < 2 || n > 10 || config.rooms.length !== n) {
+        return res.status(400).json({ error: "Need 2-10 people with matching rooms" });
+      }
 
-      const each = Math.round(config.totalRent / 3);
-      const initialPrices: Prices = [each, each, config.totalRent - 2 * each];
+      const id = generateId(6);
+      const tokens = Array.from({ length: n }, () => generateId(12));
+
+      const each = Math.round(config.totalRent / n);
+      const ip: Prices = new Array(n).fill(each);
+      ip[n - 1] = config.totalRent - each * (n - 1);
 
       const game: GameState = {
         id,
         config,
         tokens,
+        n,
         currentRound: 1,
-        currentPrices: initialPrices,
+        currentPrices: ip,
         currentStep: config.totalRent * 0.15,
         pendingChoices: {},
         rounds: [],
@@ -312,7 +309,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const playerIdx = game.tokens.indexOf(token);
       if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
 
-      if (typeof room !== "number" || room < 0 || room > 2) {
+      if (typeof room !== "number" || room < 0 || room >= game.n) {
         return res.status(400).json({ error: "Invalid room choice" });
       }
 
@@ -346,7 +343,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const playerIdx = game.tokens.indexOf(token);
       if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
 
-      const fb = fallbackAllocation(game.rounds, game.config.totalRent);
+      const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
       game.status = "complete";
       game.result = { assignment: fb.assignment, prices: fb.prices };
       return res.json(stateForPlayer(game, playerIdx));

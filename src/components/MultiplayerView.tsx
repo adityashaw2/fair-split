@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock, Check, Users, Loader2, AlertCircle, Wifi, WifiOff, Pause, ArrowRight, CheckCircle } from "lucide-react";
 import type { GameStateResponse } from "@/lib/multiplayer";
 import { continueGame, acceptBest } from "@/lib/multiplayer";
-import { ROOM_COLORS, PERSON_COLORS } from "@/lib/constants";
+import { roomColor, personColor } from "@/lib/constants";
 import { formatCurrency } from "@/lib/algorithm";
 import { ResultView } from "./ResultView";
 
@@ -29,6 +29,7 @@ export function MultiplayerView({
   const [acting, setActing] = useState(false);
   const { config, playerIndex, currentRound, currentPrices, myChoice, choicesSubmitted, status, result, checkpointPreview } = state;
   const myName = config.people[playerIndex].name;
+  const n = config.people.length;
 
   // Game complete → show result
   if (status === "complete" && result) {
@@ -71,10 +72,10 @@ export function MultiplayerView({
             {config.people.map((person, pIdx) => {
               const roomIdx = checkpointPreview.assignment[pIdx];
               const room = config.rooms[roomIdx];
-              const color = ROOM_COLORS[roomIdx];
+              const color = roomColor(roomIdx);
               return (
                 <div key={pIdx} className="flex items-center justify-between py-1.5">
-                  <span className={`text-sm ${PERSON_COLORS[pIdx]}`}>{person.name}</span>
+                  <span className={`text-sm ${personColor(pIdx)}`}>{person.name}</span>
                   <span className={`text-sm font-semibold ${color.text}`}>
                     {room.name} — {formatCurrency(checkpointPreview.prices[roomIdx])}
                   </span>
@@ -98,7 +99,7 @@ export function MultiplayerView({
   }
 
   const waiting = myChoice !== null;
-  const othersWaiting = [0, 1, 2].filter(
+  const othersWaiting = Array.from({ length: n }, (_, i) => i).filter(
     (i) => i !== playerIndex && !choicesSubmitted.includes(i),
   );
 
@@ -115,7 +116,7 @@ export function MultiplayerView({
             <h2 className="text-xl font-bold">Round {currentRound}</h2>
             <p className="text-sm text-text-secondary">
               Playing as{" "}
-              <span className={`font-semibold ${PERSON_COLORS[playerIndex]}`}>
+              <span className={`font-semibold ${personColor(playerIndex)}`}>
                 {myName}
               </span>
             </p>
@@ -131,14 +132,14 @@ export function MultiplayerView({
         </div>
 
         {/* Player status bar */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6">
           {config.people.map((person, i) => {
             const hasSubmitted = choicesSubmitted.includes(i);
             const isMe = i === playerIndex;
             return (
               <div
                 key={i}
-                className={`flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm transition-all ${
                   hasSubmitted
                     ? "border-success/30 bg-success/5"
                     : isMe && myChoice === null
@@ -191,7 +192,7 @@ export function MultiplayerView({
               </p>
 
               {config.rooms.map((room, rIdx) => {
-                const color = ROOM_COLORS[rIdx];
+                const color = roomColor(rIdx);
                 return (
                   <motion.button
                     key={rIdx}
@@ -249,7 +250,7 @@ export function MultiplayerView({
 
               <h3 className="text-lg font-semibold mb-2">
                 You picked{" "}
-                <span className={ROOM_COLORS[myChoice!].text}>
+                <span className={roomColor(myChoice!).text}>
                   {config.rooms[myChoice!].name}
                 </span>
               </h3>
@@ -270,17 +271,20 @@ export function MultiplayerView({
 
               {/* Show your choice */}
               <div className="mt-6 inline-block">
-                <div
-                  className={`px-4 py-3 rounded-xl border-2 ${ROOM_COLORS[myChoice!].border} ${ROOM_COLORS[myChoice!].bg}`}
-                >
-                  <p className={`font-semibold ${ROOM_COLORS[myChoice!].text}`}>
-                    {config.rooms[myChoice!].name} —{" "}
-                    {formatCurrency(currentPrices[myChoice!])}
-                  </p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {config.rooms[myChoice!].description}
-                  </p>
-                </div>
+                {(() => {
+                  const color = roomColor(myChoice!);
+                  return (
+                    <div className={`px-4 py-3 rounded-xl border-2 ${color.border} ${color.bg}`}>
+                      <p className={`font-semibold ${color.text}`}>
+                        {config.rooms[myChoice!].name} —{" "}
+                        {formatCurrency(currentPrices[myChoice!])}
+                      </p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {config.rooms[myChoice!].description}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </motion.div>
           )}
