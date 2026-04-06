@@ -66,7 +66,10 @@ function isEnvyFree(choices: Choices): boolean {
 }
 
 function getStepForRound(totalRent: number, round: number): number {
-  return (totalRent * 0.25) / Math.pow(1.8, round);
+  return Math.max(
+    (totalRent * 0.15) / Math.pow(2, Math.floor(round / 3)),
+    totalRent * 0.01,
+  );
 }
 
 function computeNextPrices(

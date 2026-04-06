@@ -46,7 +46,6 @@ export function computeNextPrices(
 
   const adjusted: Prices = [0, 0, 0];
   for (let r = 0; r < 3; r++) {
-    // Excess demand → price up; no demand → price down
     const delta = (demand[r] - 1) * step;
     adjusted[r] = Math.max(0, currentPrices[r] + delta);
   }
@@ -63,12 +62,18 @@ export function computeNextPrices(
 }
 
 /**
- * Given a step and round number, decay the step.
- * Start aggressive, get precise.
+ * Compute step for a given round.
+ *
+ * Uses a gentle decay: starts at 15% of rent, halves every 3 rounds.
+ * This keeps early rounds responsive (big swings) while still
+ * converging precisely. Floor at 1% of rent so it never crawls.
  */
 export function getStepForRound(totalRent: number, round: number): number {
-  // Start at ~25% of rent, halve each round
-  return (totalRent * 0.25) / Math.pow(1.8, round);
+  // Halve every 3 rounds, floor at 1%
+  return Math.max(
+    (totalRent * 0.15) / Math.pow(2, Math.floor(round / 3)),
+    totalRent * 0.01,
+  );
 }
 
 /**
