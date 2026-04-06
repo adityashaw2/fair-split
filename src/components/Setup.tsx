@@ -13,9 +13,10 @@ import { DEFAULT_ROOMS } from "@/lib/constants";
 
 interface Props {
   onStart: (config: GameConfig) => void;
+  onStartMultiplayer?: (config: GameConfig) => void;
 }
 
-export function Setup({ onStart }: Props) {
+export function Setup({ onStart, onStartMultiplayer }: Props) {
   const [people, setPeople] = useState<[Person, Person, Person]>([
     { name: "" },
     { name: "" },
@@ -244,14 +245,41 @@ export function Setup({ onStart }: Props) {
           )}
 
           {/* Submit */}
-          <motion.div variants={itemVariants}>
+          <motion.div variants={itemVariants} className="space-y-3">
             <button
               type="submit"
               className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-black font-semibold rounded-lg py-3 transition-colors"
             >
-              Start Splitting
+              Play Together (Same Device)
               <ChevronRight className="w-4 h-4" />
             </button>
+            {onStartMultiplayer && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Validate same as submit, then call multiplayer
+                  const rent = Number(totalRent);
+                  if (!rent || rent <= 0) { setError("Enter a valid rent amount"); return; }
+                  const names = people.map((p) => p.name.trim());
+                  if (names.some((n) => !n)) { setError("All names are required"); return; }
+                  if (new Set(names).size < 3) { setError("Names must be unique"); return; }
+                  if (showIncome && people.some((p) => !p.income || p.income <= 0)) {
+                    setError("All incomes must be positive when income weighting is on"); return;
+                  }
+                  setError(null);
+                  onStartMultiplayer({
+                    people: people.map((p) => ({ ...p, name: p.name.trim() })) as [Person, Person, Person],
+                    rooms,
+                    totalRent: rent,
+                    useIncomeWeighting: showIncome,
+                  });
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-surface hover:bg-surface-2 border border-border text-text font-semibold rounded-lg py-3 transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                Share Links (Each on Own Phone)
+              </button>
+            )}
           </motion.div>
         </form>
 
