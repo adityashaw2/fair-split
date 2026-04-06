@@ -202,8 +202,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   cleanup();
 
-  const pathParts = (req.query.path as string[]) || [];
-  const route = pathParts.join("/");
+  // Vercel catch-all: extract path from URL since query.path can be unreliable
+  const url = new URL(req.url || "/", `https://${req.headers.host}`);
+  const route = url.pathname.replace(/^\/api\/game\/?/, "").replace(/\/$/, "");
 
   try {
     // POST /api/game/create
