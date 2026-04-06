@@ -28,9 +28,10 @@ export function computeNextPrices(
   }
 
   const sum = adjusted.reduce((a: number, b: number) => a + b, 0);
-  if (sum === 0) return new Array(n).fill(Math.round(totalRent / n));
+  if (sum === 0) return snapTo100(new Array(n).fill(Math.round(totalRent / n)), totalRent);
   const scale = totalRent / sum;
-  return adjusted.map((p: number) => Math.round(p * scale));
+  const scaled = adjusted.map((p: number) => Math.round(p * scale));
+  return snapTo100(fixRounding(scaled, totalRent), totalRent);
 }
 
 /**
@@ -95,12 +96,43 @@ export function autoResolve(
 
   return {
     assignment,
-    prices: fixRounding(avgPrices, totalRent),
+    prices: snapTo100(fixRounding(avgPrices, totalRent), totalRent),
   };
 }
 
 /** Alias for backwards compat */
 export const fallbackAllocation = autoResolve;
+
+/**
+ * Snap prices to nearest multiples of 100, preserving totalRent sum.
+ * If totalRent itself isn't a multiple of 100, falls back to exact values.
+ */
+function snapTo100(prices: Prices, totalRent: number): Prices {
+  if (totalRent % 100 !== 0) return prices;
+  const n = prices.length;
+  const rounded = prices.map((p) => Math.round(p / 100) * 100);
+  let diff = totalRent - rounded.reduce((a, b) => a + b, 0);
+  // Distribute remainder in 100-increments to the rooms closest to rounding boundary
+  const errors = prices.map((p, i) => ({ i, err: p - rounded[i] }));
+  if (diff > 0) {
+    errors.sort((a, b) => b.err - a.err); // most under-rounded first
+    for (const e of errors) {
+      if (diff <= 0) break;
+      rounded[e.i] += 100;
+      diff -= 100;
+    }
+  } else if (diff < 0) {
+    errors.sort((a, b) => a.err - b.err); // most over-rounded first
+    for (const e of errors) {
+      if (diff >= 0) break;
+      if (rounded[e.i] >= 100) { // don't go negative
+        rounded[e.i] -= 100;
+        diff += 100;
+      }
+    }
+  }
+  return rounded;
+}
 
 export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
@@ -109,9 +141,8 @@ export function formatCurrency(amount: number): string {
 export function initialPrices(totalRent: number, n: number): Prices {
   const each = Math.round(totalRent / n);
   const prices = new Array(n).fill(each);
-  // Fix rounding so sum = totalRent
   prices[n - 1] = totalRent - each * (n - 1);
-  return prices;
+  return snapTo100(prices, totalRent);
 }
 
 export function fixRounding(prices: Prices, totalRent: number): Prices {
