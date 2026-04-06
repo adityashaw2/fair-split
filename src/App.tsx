@@ -12,17 +12,21 @@ import {
   computeNextPrices,
   isEnvyFree,
   fixRounding,
+  fallbackAllocation,
 } from "@/lib/algorithm";
 import {
   createGame,
   useGamePolling,
   type CreateGameResult,
 } from "@/lib/multiplayer";
+import { Checkpoint } from "@/components/Checkpoint";
 import { Setup } from "@/components/Setup";
 import { RoundView } from "@/components/RoundView";
 import { ResultView } from "@/components/ResultView";
 import { ShareLinks } from "@/components/ShareLinks";
 import { MultiplayerView } from "@/components/MultiplayerView";
+
+const SOFT_LIMIT = 15;
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -47,7 +51,7 @@ export default function App() {
   // ── State ─────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>("local");
   const [phase, setPhase] = useState<
-    AppPhase | "share-links" | "multiplayer-play"
+    AppPhase | "share-links" | "multiplayer-play" | "checkpoint"
   >("setup");
 
   // Local mode state
@@ -109,6 +113,9 @@ export default function App() {
           exactEnvyFree: true,
         });
         setPhase("result");
+      } else if (roundNum > 0 && roundNum % SOFT_LIMIT === 0) {
+        // Checkpoint every SOFT_LIMIT rounds — let user decide
+        setPhase("checkpoint");
       } else {
         // Adaptive bisection: detect oscillation and halve step
         let nextStep = currentStep;
@@ -133,6 +140,25 @@ export default function App() {
     },
     [config, currentPrices, currentStep, rounds],
   );
+
+  // ── Checkpoint handlers ────────────────────────────────────────────
+
+  const handleKeepGoing = useCallback(() => {
+    setPhase("round");
+  }, []);
+
+  const handleAcceptBest = useCallback(() => {
+    if (!config) return;
+    const n = config.people.length;
+    const fb = fallbackAllocation(rounds, config.totalRent, n);
+    setAllocation({
+      assignment: fb.assignment,
+      prices: fb.prices,
+      rounds,
+      exactEnvyFree: false,
+    });
+    setPhase("result");
+  }, [config, rounds]);
 
   // ── Multiplayer host handlers ─────────────────────────────────────
 
@@ -188,6 +214,7 @@ export default function App() {
           config={config!}
           prices={currentPrices}
           round={rounds.length + 1}
+          softLimit={SOFT_LIMIT}
           onSubmitChoices={handleChoices}
           onRestart={handleRestart}
         />
@@ -199,6 +226,17 @@ export default function App() {
           config={config!}
           allocation={allocation!}
           onRestart={handleRestart}
+        />
+      );
+
+    case "checkpoint":
+      return (
+        <Checkpoint
+          config={config!}
+          rounds={rounds}
+          currentPrices={currentPrices}
+          onKeepGoing={handleKeepGoing}
+          onAcceptBest={handleAcceptBest}
         />
       );
 

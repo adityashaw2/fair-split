@@ -9,6 +9,7 @@ interface Props {
   config: GameConfig;
   prices: Prices;
   round: number;
+  softLimit?: number;
   onSubmitChoices: (choices: Choices) => void;
   onRestart: () => void;
 }
@@ -17,6 +18,7 @@ export function RoundView({
   config,
   prices,
   round,
+  softLimit,
   onSubmitChoices,
   onRestart,
 }: Props) {
@@ -62,7 +64,14 @@ export function RoundView({
         {/* Round header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-bold">Round {round}</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold">Round {round}</h2>
+              {softLimit && round > softLimit && (
+                <span className="text-xs text-accent px-2 py-0.5 rounded-full bg-accent/10">
+                  overtime
+                </span>
+              )}
+            </div>
             <p className="text-sm text-text-secondary mt-0.5">
               {config.people[currentPerson].name}, pick your preferred room
             </p>

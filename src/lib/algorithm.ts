@@ -63,6 +63,68 @@ function snapPrices(prices: Prices, totalRent: number): Prices {
   return rounded;
 }
 
+/**
+ * Best-fit allocation from collected rounds — used at checkpoint.
+ * Greedy frequency-based: assign each person the room they picked most often.
+ * Constraint: never assign a room to someone who never picked it.
+ */
+export function fallbackAllocation(
+  rounds: import("./types").RoundData[],
+  totalRent: number,
+  n: number,
+): { assignment: number[]; prices: Prices } {
+  // If any round was envy-free, use it directly
+  for (const r of rounds) {
+    if (isEnvyFree(r.choices)) {
+      return { assignment: [...r.choices], prices: snapPrices(fixRounding([...r.prices], totalRent), totalRent) };
+    }
+  }
+
+  // Build frequency matrix: freq[person][room] = times picked
+  const freq: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (const r of rounds) {
+    for (let p = 0; p < n; p++) freq[p][r.choices[p]]++;
+  }
+
+  // Greedy unique assignment — only consider rooms the person actually picked
+  const assignment = new Array(n).fill(-1);
+  const usedRooms = new Set<number>();
+  const usedPeople = new Set<number>();
+
+  for (let iter = 0; iter < n; iter++) {
+    let bestP = -1, bestR = -1, bestScore = 0;
+    for (let p = 0; p < n; p++) {
+      if (usedPeople.has(p)) continue;
+      for (let r = 0; r < n; r++) {
+        if (usedRooms.has(r)) continue;
+        if (freq[p][r] > bestScore) { // > 0 ensures they picked it at least once
+          bestScore = freq[p][r];
+          bestP = p;
+          bestR = r;
+        }
+      }
+    }
+    if (bestP === -1) {
+      // Edge case: remaining people never picked remaining rooms — assign anyway
+      for (let p = 0; p < n; p++) {
+        if (usedPeople.has(p)) continue;
+        for (let r = 0; r < n; r++) {
+          if (usedRooms.has(r)) continue;
+          bestP = p; bestR = r; break;
+        }
+        break;
+      }
+    }
+    assignment[bestP] = bestR;
+    usedRooms.add(bestR);
+    usedPeople.add(bestP);
+  }
+
+  // Use last round's prices (most converged)
+  const prices = [...rounds[rounds.length - 1].prices];
+  return { assignment, prices: snapPrices(fixRounding(prices, totalRent), totalRent) };
+}
+
 export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
