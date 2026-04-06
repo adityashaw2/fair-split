@@ -12,7 +12,6 @@ import {
   computeNextPrices,
   isEnvyFree,
   fixRounding,
-  fallbackAllocation,
 } from "@/lib/algorithm";
 import {
   createGame,
@@ -24,9 +23,6 @@ import { RoundView } from "@/components/RoundView";
 import { ResultView } from "@/components/ResultView";
 import { ShareLinks } from "@/components/ShareLinks";
 import { MultiplayerView } from "@/components/MultiplayerView";
-import { Checkpoint } from "@/components/Checkpoint";
-
-const SOFT_LIMIT = 15; // checkpoint — ask user to continue or accept best
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -51,7 +47,7 @@ export default function App() {
   // ── State ─────────────────────────────────────────────────────────
   const [mode, setMode] = useState<Mode>("local");
   const [phase, setPhase] = useState<
-    AppPhase | "share-links" | "multiplayer-play" | "checkpoint"
+    AppPhase | "share-links" | "multiplayer-play"
   >("setup");
 
   // Local mode state
@@ -113,9 +109,6 @@ export default function App() {
           exactEnvyFree: true,
         });
         setPhase("result");
-      } else if (roundNum === SOFT_LIMIT) {
-        // Hit checkpoint — ask user to continue or accept
-        setPhase("checkpoint");
       } else {
         // Adaptive bisection: detect oscillation and halve step
         let nextStep = currentStep;
@@ -140,24 +133,6 @@ export default function App() {
     },
     [config, currentPrices, currentStep, rounds],
   );
-
-  // ── Checkpoint handlers ────────────────────────────────────────────
-
-  const handleKeepGoing = useCallback(() => {
-    setPhase("round");
-  }, []);
-
-  const handleAcceptBest = useCallback(() => {
-    if (!config) return;
-    const n = config.people.length;
-    const fb = fallbackAllocation(rounds, config.totalRent, n);
-    setAllocation({
-      assignment: fb.assignment,
-      prices: fb.prices,
-      rounds,
-    });
-    setPhase("result");
-  }, [config, rounds]);
 
   // ── Multiplayer host handlers ─────────────────────────────────────
 
@@ -213,7 +188,6 @@ export default function App() {
           config={config!}
           prices={currentPrices}
           round={rounds.length + 1}
-          totalRounds={SOFT_LIMIT}
           onSubmitChoices={handleChoices}
           onRestart={handleRestart}
         />
@@ -225,17 +199,6 @@ export default function App() {
           config={config!}
           allocation={allocation!}
           onRestart={handleRestart}
-        />
-      );
-
-    case "checkpoint":
-      return (
-        <Checkpoint
-          config={config!}
-          rounds={rounds}
-          currentPrices={currentPrices}
-          onKeepGoing={handleKeepGoing}
-          onAcceptBest={handleAcceptBest}
         />
       );
 

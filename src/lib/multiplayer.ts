@@ -12,12 +12,8 @@ export interface GameStateResponse {
   myChoice: number | null;
   choicesSubmitted: number[];
   rounds: RoundData[];
-  status: "waiting" | "in-round" | "checkpoint" | "complete";
+  status: "waiting" | "in-round" | "complete";
   result?: {
-    assignment: number[];
-    prices: Prices;
-  };
-  checkpointPreview?: {
     assignment: number[];
     prices: Prices;
   };
@@ -70,32 +66,6 @@ export async function submitChoice(
     const data = await resp.json().catch(() => ({}));
     throw new Error(data.error || "Failed to submit choice");
   }
-  return resp.json();
-}
-
-export async function continueGame(
-  gameId: string,
-  token: string,
-): Promise<GameStateResponse> {
-  const resp = await fetch(`${API_BASE}/continue`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: gameId, token }),
-  });
-  if (!resp.ok) throw new Error("Failed to continue game");
-  return resp.json();
-}
-
-export async function acceptBest(
-  gameId: string,
-  token: string,
-): Promise<GameStateResponse> {
-  const resp = await fetch(`${API_BASE}/accept`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: gameId, token }),
-  });
-  if (!resp.ok) throw new Error("Failed to accept allocation");
   return resp.json();
 }
 

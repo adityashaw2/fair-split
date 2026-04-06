@@ -1,11 +1,11 @@
 /**
  * Su's Rental Harmony — generalized for N roommates.
  *
- * Phase 1 (rounds 1–6): Interactive preference revelation with adaptive step.
- * Phase 2 (round 7+): Auto-resolve using collected preference data.
+ * Pure envy-free: rounds continue until everyone picks a different room.
+ * No fallback allocation — the theorem guarantees convergence.
  */
 
-import type { Prices, Choices, RoundData } from "./types";
+import type { Prices, Choices } from "./types";
 
 export function isEnvyFree(choices: Choices): boolean {
   const n = choices.length;
@@ -33,69 +33,6 @@ export function computeNextPrices(
   const scaled = adjusted.map((p: number) => Math.round(p * scale));
   return snapPrices(fixRounding(scaled, totalRent), totalRent);
 }
-
-/**
- * Auto-resolve from collected round data.
- *
- * Strategy:
- *  1. Average prices from the last N rounds (brackets the solution).
- *  2. Build preference frequency matrix: freq[person][room] = pick count.
- *  3. Greedy unique assignment by strongest preference.
- */
-export function autoResolve(
-  rounds: RoundData[],
-  totalRent: number,
-  n: number,
-): { assignment: number[]; prices: Prices } {
-  // Check if any round was actually envy-free
-  for (const r of rounds) {
-    if (isEnvyFree(r.choices)) {
-      return {
-        assignment: [...r.choices],
-        prices: fixRounding([...r.prices], totalRent),
-      };
-    }
-  }
-
-  // Use the last round's prices — they're the most converged
-  const finalPrices = [...rounds[rounds.length - 1].prices];
-
-  // Frequency-based assignment
-  const freq: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
-  for (const r of rounds) {
-    for (let p = 0; p < n; p++) freq[p][r.choices[p]]++;
-  }
-
-  const assignment = new Array(n).fill(-1);
-  const usedRooms = new Set<number>();
-  const usedPeople = new Set<number>();
-
-  for (let iter = 0; iter < n; iter++) {
-    let bestP = -1, bestR = -1, bestScore = -1;
-    for (let p = 0; p < n; p++) {
-      if (usedPeople.has(p)) continue;
-      for (let r = 0; r < n; r++) {
-        if (usedRooms.has(r)) continue;
-        if (freq[p][r] > bestScore) {
-          bestScore = freq[p][r];
-          bestP = p;
-          bestR = r;
-        }
-      }
-    }
-    assignment[bestP] = bestR;
-    usedRooms.add(bestR);
-    usedPeople.add(bestP);
-  }
-
-  return {
-    assignment,
-    prices: snapPrices(fixRounding(finalPrices, totalRent), totalRent),
-  };
-}
-
-/** Alias for backwards compat */
-export const fallbackAllocation = autoResolve;
 
 /**
  * Snap prices to nearest multiples of 100, preserving totalRent sum.

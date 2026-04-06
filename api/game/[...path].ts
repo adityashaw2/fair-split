@@ -29,7 +29,7 @@ interface GameState {
   currentStep: number;
   pendingChoices: Record<number, number>;
   rounds: RoundData[];
-  status: "waiting" | "in-round" | "checkpoint" | "complete";
+  status: "waiting" | "in-round" | "complete";
   result?: {
     assignment: Choices;
     prices: Prices;
@@ -41,7 +41,6 @@ interface GameState {
 
 const games = new Map<string, GameState>();
 const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
-const SOFT_LIMIT = 15;
 
 function cleanup() {
   const now = Date.now();
@@ -114,46 +113,6 @@ function snapPrices(prices: Prices, totalRent: number): Prices {
 
 // ── Fallback allocation ──────────────────────────────────────────────
 
-function fallbackAllocation(
-  rounds: RoundData[],
-  totalRent: number,
-  n: number,
-): { assignment: Choices; prices: Prices } {
-  // Check if any historical round was envy-free
-  for (const r of rounds) {
-    if (isEnvyFree(r.choices)) {
-      return { assignment: [...r.choices], prices: fixRounding([...r.prices], totalRent) };
-    }
-  }
-
-  // Frequency-based: count how often each person picked each room
-  const freq: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
-  for (const r of rounds) {
-    for (let p = 0; p < n; p++) freq[p][r.choices[p]]++;
-  }
-
-  // Greedy assignment by strongest preference
-  const assignment = new Array(n).fill(-1);
-  const usedRooms = new Set<number>();
-  const usedPeople = new Set<number>();
-
-  for (let iter = 0; iter < n; iter++) {
-    let bestP = -1, bestR = -1, bestScore = -1;
-    for (let p = 0; p < n; p++) {
-      if (usedPeople.has(p)) continue;
-      for (let r = 0; r < n; r++) {
-        if (usedRooms.has(r)) continue;
-        if (freq[p][r] > bestScore) { bestScore = freq[p][r]; bestP = p; bestR = r; }
-      }
-    }
-    assignment[bestP] = bestR;
-    usedRooms.add(bestR);
-    usedPeople.add(bestP);
-  }
-
-  return { assignment, prices: snapPrices(fixRounding([...rounds[rounds.length - 1].prices], totalRent), totalRent) };
-}
-
 // ── Advance round logic ──────────────────────────────────────────────
 
 function tryAdvanceRound(game: GameState): void {
@@ -177,9 +136,6 @@ function tryAdvanceRound(game: GameState): void {
     const finalPrices = snapPrices(fixRounding(game.currentPrices, game.config.totalRent), game.config.totalRent);
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices };
-  } else if (game.currentRound === SOFT_LIMIT) {
-    // Hit checkpoint — ask players to continue or accept
-    game.status = "checkpoint";
   } else {
     // Adaptive bisection
     const n = game.n;
@@ -212,12 +168,6 @@ function tryAdvanceRound(game: GameState): void {
 function stateForPlayer(game: GameState, playerIdx: number) {
   const choicesSubmitted = Object.keys(game.pendingChoices).map(Number);
 
-  let checkpointPreview = undefined;
-  if (game.status === "checkpoint") {
-    const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
-    checkpointPreview = { assignment: fb.assignment, prices: fb.prices };
-  }
-
   return {
     id: game.id,
     config: game.config,
@@ -229,7 +179,6 @@ function stateForPlayer(game: GameState, playerIdx: number) {
     rounds: game.rounds,
     status: game.status,
     result: game.result,
-    checkpointPreview,
     totalPlayers: game.n,
   };
 }
@@ -330,36 +279,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       game.pendingChoices[playerIdx] = room;
       tryAdvanceRound(game);
 
-      return res.json(stateForPlayer(game, playerIdx));
-    }
-
-    // POST /api/game/continue { id, token }
-    if (route === "continue" && req.method === "POST") {
-      const { id, token } = req.body as { id: string; token: string };
-      const game = games.get(id);
-      if (!game) return res.status(404).json({ error: "Game not found or expired" });
-      if (game.status !== "checkpoint") return res.status(400).json({ error: "Game not at checkpoint" });
-
-      const playerIdx = game.tokens.indexOf(token);
-      if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
-
-      game.status = "in-round";
-      return res.json(stateForPlayer(game, playerIdx));
-    }
-
-    // POST /api/game/accept { id, token }
-    if (route === "accept" && req.method === "POST") {
-      const { id, token } = req.body as { id: string; token: string };
-      const game = games.get(id);
-      if (!game) return res.status(404).json({ error: "Game not found or expired" });
-      if (game.status !== "checkpoint") return res.status(400).json({ error: "Game not at checkpoint" });
-
-      const playerIdx = game.tokens.indexOf(token);
-      if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
-
-      const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
-      game.status = "complete";
-      game.result = { assignment: fb.assignment, prices: fb.prices };
       return res.json(stateForPlayer(game, playerIdx));
     }
 
