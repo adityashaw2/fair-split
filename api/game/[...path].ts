@@ -82,10 +82,10 @@ function computeNextPrices(
   }
 
   const sum = adjusted.reduce((a: number, b: number) => a + b, 0);
-  if (sum === 0) return snapTo100(new Array(n).fill(Math.round(totalRent / n)), totalRent);
+  if (sum === 0) return snapPrices(new Array(n).fill(Math.round(totalRent / n)), totalRent);
   const scale = totalRent / sum;
   const scaled = adjusted.map((p: number) => Math.round(p * scale));
-  return snapTo100(fixRounding(scaled, totalRent), totalRent);
+  return snapPrices(fixRounding(scaled, totalRent), totalRent);
 }
 
 function fixRounding(prices: Prices, totalRent: number): Prices {
@@ -98,11 +98,11 @@ function fixRounding(prices: Prices, totalRent: number): Prices {
   return fixed;
 }
 
-function snapTo100(prices: Prices, totalRent: number): Prices {
+function snapPrices(prices: Prices, totalRent: number): Prices {
   if (totalRent % 100 !== 0) return prices;
-  const rounded = prices.map((p) => Math.round(p / 100) * 100);
-  let diff = totalRent - rounded.reduce((a, b) => a + b, 0);
-  const errors = prices.map((p, i) => ({ i, err: p - rounded[i] }));
+  const rounded = prices.map((p: number) => Math.round(p / 100) * 100);
+  let diff = totalRent - rounded.reduce((a: number, b: number) => a + b, 0);
+  const errors = prices.map((p: number, i: number) => ({ i, err: p - rounded[i] }));
   if (diff > 0) {
     errors.sort((a, b) => b.err - a.err);
     for (const e of errors) { if (diff <= 0) break; rounded[e.i] += 100; diff -= 100; }
@@ -152,7 +152,7 @@ function fallbackAllocation(
     usedPeople.add(bestP);
   }
 
-  return { assignment, prices: snapTo100(fixRounding([...rounds[rounds.length - 1].prices], totalRent), totalRent) };
+  return { assignment, prices: snapPrices(fixRounding([...rounds[rounds.length - 1].prices], totalRent), totalRent) };
 }
 
 // ── Advance round logic ──────────────────────────────────────────────
@@ -175,7 +175,7 @@ function tryAdvanceRound(game: GameState): void {
   game.rounds.push(roundData);
 
   if (envyFree) {
-    const finalPrices = snapTo100(fixRounding(game.currentPrices, game.config.totalRent), game.config.totalRent);
+    const finalPrices = snapPrices(fixRounding(game.currentPrices, game.config.totalRent), game.config.totalRent);
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices };
   } else if (game.currentRound >= AUTO_RESOLVE_AFTER) {
@@ -275,7 +275,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const each = Math.round(config.totalRent / n);
       const ipRaw: Prices = new Array(n).fill(each);
       ipRaw[n - 1] = config.totalRent - each * (n - 1);
-      const ip = snapTo100(ipRaw, config.totalRent);
+      const ip = snapPrices(ipRaw, config.totalRent);
 
       const game: GameState = {
         id,

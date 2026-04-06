@@ -28,10 +28,10 @@ export function computeNextPrices(
   }
 
   const sum = adjusted.reduce((a: number, b: number) => a + b, 0);
-  if (sum === 0) return snapTo100(new Array(n).fill(Math.round(totalRent / n)), totalRent);
+  if (sum === 0) return snapPrices(new Array(n).fill(Math.round(totalRent / n)), totalRent);
   const scale = totalRent / sum;
   const scaled = adjusted.map((p: number) => Math.round(p * scale));
-  return snapTo100(fixRounding(scaled, totalRent), totalRent);
+  return snapPrices(fixRounding(scaled, totalRent), totalRent);
 }
 
 /**
@@ -96,7 +96,7 @@ export function autoResolve(
 
   return {
     assignment,
-    prices: snapTo100(fixRounding(avgPrices, totalRent), totalRent),
+    prices: snapPrices(fixRounding(avgPrices, totalRent), totalRent),
   };
 }
 
@@ -107,25 +107,23 @@ export const fallbackAllocation = autoResolve;
  * Snap prices to nearest multiples of 100, preserving totalRent sum.
  * If totalRent itself isn't a multiple of 100, falls back to exact values.
  */
-function snapTo100(prices: Prices, totalRent: number): Prices {
+function snapPrices(prices: Prices, totalRent: number): Prices {
   if (totalRent % 100 !== 0) return prices;
-  const n = prices.length;
   const rounded = prices.map((p) => Math.round(p / 100) * 100);
   let diff = totalRent - rounded.reduce((a, b) => a + b, 0);
-  // Distribute remainder in 100-increments to the rooms closest to rounding boundary
   const errors = prices.map((p, i) => ({ i, err: p - rounded[i] }));
   if (diff > 0) {
-    errors.sort((a, b) => b.err - a.err); // most under-rounded first
+    errors.sort((a, b) => b.err - a.err);
     for (const e of errors) {
       if (diff <= 0) break;
       rounded[e.i] += 100;
       diff -= 100;
     }
   } else if (diff < 0) {
-    errors.sort((a, b) => a.err - b.err); // most over-rounded first
+    errors.sort((a, b) => a.err - b.err);
     for (const e of errors) {
       if (diff >= 0) break;
-      if (rounded[e.i] >= 100) { // don't go negative
+      if (rounded[e.i] >= 100) {
         rounded[e.i] -= 100;
         diff += 100;
       }
@@ -142,7 +140,7 @@ export function initialPrices(totalRent: number, n: number): Prices {
   const each = Math.round(totalRent / n);
   const prices = new Array(n).fill(each);
   prices[n - 1] = totalRent - each * (n - 1);
-  return snapTo100(prices, totalRent);
+  return snapPrices(prices, totalRent);
 }
 
 export function fixRounding(prices: Prices, totalRent: number): Prices {
