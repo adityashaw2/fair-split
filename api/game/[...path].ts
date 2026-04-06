@@ -186,8 +186,8 @@ function tryAdvanceRound(game: GameState): void {
     const finalPrices = snapPrices(fixRounding(game.currentPrices, game.config.totalRent), game.config.totalRent);
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices };
-  } else if (game.currentRound > 0 && game.currentRound % SOFT_LIMIT === 0) {
-    // Checkpoint — let players decide
+  } else if (game.currentRound >= SOFT_LIMIT && (game.currentRound - SOFT_LIMIT) % 5 === 0) {
+    // Checkpoint at round 15, then every 5 rounds after
     game.status = "checkpoint";
     game.pendingChoices = {};
   } else {

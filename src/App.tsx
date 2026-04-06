@@ -113,8 +113,8 @@ export default function App() {
           exactEnvyFree: true,
         });
         setPhase("result");
-      } else if (roundNum > 0 && roundNum % SOFT_LIMIT === 0) {
-        // Checkpoint every SOFT_LIMIT rounds — let user decide
+      } else if (roundNum >= SOFT_LIMIT && (roundNum - SOFT_LIMIT) % 5 === 0) {
+        // Checkpoint at round 15, then every 5 rounds after (20, 25, 30...)
         setPhase("checkpoint");
       } else {
         // Adaptive bisection: detect oscillation and halve step
