@@ -12,7 +12,6 @@ import {
   computeNextPrices,
   isEnvyFree,
   fixRounding,
-  autoResolve,
   fallbackAllocation,
 } from "@/lib/algorithm";
 import {
@@ -27,8 +26,7 @@ import { ShareLinks } from "@/components/ShareLinks";
 import { MultiplayerView } from "@/components/MultiplayerView";
 import { Checkpoint } from "@/components/Checkpoint";
 
-const AUTO_RESOLVE_AFTER = 6; // auto-compute after this many rounds
-const SOFT_LIMIT = 15; // checkpoint for manual mode
+const SOFT_LIMIT = 15; // checkpoint — ask user to continue or accept best
 
 type Mode = "local" | "multiplayer-host" | "multiplayer-player";
 
@@ -115,15 +113,9 @@ export default function App() {
           exactEnvyFree: true,
         });
         setPhase("result");
-      } else if (roundNum >= AUTO_RESOLVE_AFTER) {
-        const resolved = autoResolve(newRounds, config.totalRent, n);
-        setAllocation({
-          assignment: resolved.assignment,
-          prices: resolved.prices,
-          rounds: newRounds,
-          exactEnvyFree: false,
-        });
-        setPhase("result");
+      } else if (roundNum === SOFT_LIMIT) {
+        // Hit checkpoint — ask user to continue or accept
+        setPhase("checkpoint");
       } else {
         // Adaptive bisection: detect oscillation and halve step
         let nextStep = currentStep;

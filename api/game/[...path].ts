@@ -41,7 +41,6 @@ interface GameState {
 
 const games = new Map<string, GameState>();
 const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
-const AUTO_RESOLVE_AFTER = 6;
 const SOFT_LIMIT = 15;
 
 function cleanup() {
@@ -178,11 +177,9 @@ function tryAdvanceRound(game: GameState): void {
     const finalPrices = snapPrices(fixRounding(game.currentPrices, game.config.totalRent), game.config.totalRent);
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices };
-  } else if (game.currentRound >= AUTO_RESOLVE_AFTER) {
-    // Enough data — auto-resolve (fallbackAllocation already snaps)
-    const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
-    game.status = "complete";
-    game.result = { assignment: fb.assignment, prices: fb.prices };
+  } else if (game.currentRound === SOFT_LIMIT) {
+    // Hit checkpoint — ask players to continue or accept
+    game.status = "checkpoint";
   } else {
     // Adaptive bisection
     const n = game.n;
