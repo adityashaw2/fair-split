@@ -1,7 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/game/:path*", "destination": "/api/game/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
     "api/game/[...path].ts": {
