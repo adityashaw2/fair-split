@@ -16,7 +16,6 @@ export interface GameStateResponse {
   result?: {
     assignment: [number, number, number];
     prices: Prices;
-    incomeAdjustedPrices?: Prices;
   };
   checkpointPreview?: {
     assignment: [number, number, number];

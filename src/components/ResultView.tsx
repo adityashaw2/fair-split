@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
-import { Trophy, RotateCcw, Share2, CheckCircle, Scale } from "lucide-react";
+import { Trophy, RotateCcw, Share2, CheckCircle } from "lucide-react";
 import type { GameConfig, Allocation } from "@/lib/types";
 import { ROOM_COLORS, PERSON_COLORS } from "@/lib/constants";
-import { formatCurrency, applyIncomeWeighting } from "@/lib/algorithm";
+import { formatCurrency } from "@/lib/algorithm";
 import { TriangleViz } from "./TriangleViz";
 
 interface Props {
@@ -13,19 +13,7 @@ interface Props {
 
 export function ResultView({ config, allocation, onRestart }: Props) {
   const { assignment, prices, rounds } = allocation;
-
-  // Compute income-adjusted prices if applicable
-  const incomes = config.people.map((p) => p.income || 0) as [
-    number,
-    number,
-    number,
-  ];
-  const hasIncomes = config.useIncomeWeighting && incomes.every((i) => i > 0);
-  const adjustedPrices = hasIncomes
-    ? applyIncomeWeighting(prices, assignment, incomes, config.totalRent)
-    : null;
-
-  const displayPrices = adjustedPrices || prices;
+  const displayPrices = prices;
 
   const handleShare = async () => {
     const lines = config.people.map((person, pIdx) => {
@@ -108,11 +96,6 @@ export function ResultView({ config, allocation, onRestart }: Props) {
                       {formatCurrency(price)}
                     </p>
                     <p className="text-xs text-text-muted">{pct}% of rent</p>
-                    {hasIncomes && person.income && (
-                      <p className="text-xs text-text-muted mt-1">
-                        {((price / person.income) * 100).toFixed(1)}% of income
-                      </p>
-                    )}
                   </div>
                 </div>
               </motion.div>
@@ -145,12 +128,6 @@ export function ResultView({ config, allocation, onRestart }: Props) {
             </span>
           </div>
 
-          {hasIncomes && (
-            <div className="flex items-center gap-2 text-accent text-sm mt-1.5">
-              <Scale className="w-4 h-4" />
-              <span>Income-weighted for balanced rent burden</span>
-            </div>
-          )}
         </motion.div>
 
         {/* Triangle visualization */}
@@ -222,13 +199,6 @@ export function ResultView({ config, allocation, onRestart }: Props) {
                 The result is <strong>envy-free</strong>: no one would rather
                 have someone else's room at someone else's price.
               </p>
-              {hasIncomes && (
-                <p>
-                  <strong>Income weighting</strong> adjusts the envy-free base
-                  prices so that higher earners shoulder proportionally more
-                  rent, while keeping the room assignment stable.
-                </p>
-              )}
             </div>
           </details>
         </motion.div>

@@ -5,7 +5,6 @@ import {
   Users,
   IndianRupee,
   ChevronRight,
-  Wallet,
   Sparkles,
 } from "lucide-react";
 import type { GameConfig, Person, Room } from "@/lib/types";
@@ -28,7 +27,6 @@ export function Setup({ onStart, onStartMultiplayer }: Props) {
     { ...DEFAULT_ROOMS[2] },
   ]);
   const [totalRent, setTotalRent] = useState<string>("");
-  const [showIncome, setShowIncome] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const updatePerson = (idx: number, updates: Partial<Person>) => {
@@ -63,14 +61,6 @@ export function Setup({ onStart, onStartMultiplayer }: Props) {
       return;
     }
 
-    if (showIncome) {
-      const incomes = people.map((p) => p.income || 0);
-      if (incomes.some((i) => i <= 0)) {
-        setError("All incomes must be positive when income weighting is on");
-        return;
-      }
-    }
-
     onStart({
       people: people.map((p) => ({
         ...p,
@@ -78,7 +68,6 @@ export function Setup({ onStart, onStartMultiplayer }: Props) {
       })) as [Person, Person, Person],
       rooms,
       totalRent: rent,
-      useIncomeWeighting: showIncome,
     });
   };
 
@@ -133,24 +122,6 @@ export function Setup({ onStart, onStartMultiplayer }: Props) {
                     onChange={(e) => updatePerson(i, { name: e.target.value })}
                     className="flex-1 bg-surface border border-border rounded-lg px-3 py-2.5 text-sm placeholder:text-text-muted focus:outline-none focus:border-accent/50 transition-colors"
                   />
-                  {showIncome && (
-                    <div className="relative w-36">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-sm">
-                        ₹
-                      </span>
-                      <input
-                        type="number"
-                        placeholder="Income"
-                        value={p.income || ""}
-                        onChange={(e) =>
-                          updatePerson(i, {
-                            income: Number(e.target.value) || undefined,
-                          })
-                        }
-                        className="w-full bg-surface border border-border rounded-lg pl-7 pr-3 py-2.5 text-sm placeholder:text-text-muted focus:outline-none focus:border-accent/50 transition-colors"
-                      />
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -210,30 +181,6 @@ export function Setup({ onStart, onStartMultiplayer }: Props) {
             </div>
           </motion.div>
 
-          {/* Income toggle */}
-          <motion.div variants={itemVariants}>
-            <button
-              type="button"
-              onClick={() => setShowIncome(!showIncome)}
-              className="flex items-center gap-2 text-sm text-text-secondary hover:text-text transition-colors"
-            >
-              <div
-                className={`w-9 h-5 rounded-full transition-colors relative ${showIncome ? "bg-accent" : "bg-surface-3"}`}
-              >
-                <div
-                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${showIncome ? "translate-x-4" : "translate-x-0.5"}`}
-                />
-              </div>
-              <Wallet className="w-4 h-4" />
-              Weight by income
-            </button>
-            {showIncome && (
-              <p className="text-xs text-text-muted mt-1.5 ml-11">
-                Adjusts final prices so rent-to-income ratio is balanced
-              </p>
-            )}
-          </motion.div>
-
           {error && (
             <motion.p
               initial={{ opacity: 0 }}
@@ -263,15 +210,11 @@ export function Setup({ onStart, onStartMultiplayer }: Props) {
                   const names = people.map((p) => p.name.trim());
                   if (names.some((n) => !n)) { setError("All names are required"); return; }
                   if (new Set(names).size < 3) { setError("Names must be unique"); return; }
-                  if (showIncome && people.some((p) => !p.income || p.income <= 0)) {
-                    setError("All incomes must be positive when income weighting is on"); return;
-                  }
                   setError(null);
                   onStartMultiplayer({
                     people: people.map((p) => ({ ...p, name: p.name.trim() })) as [Person, Person, Person],
                     rooms,
                     totalRent: rent,
-                    useIncomeWeighting: showIncome,
                   });
                 }}
                 className="w-full flex items-center justify-center gap-2 bg-surface hover:bg-surface-2 border border-border text-text font-semibold rounded-lg py-3 transition-colors"

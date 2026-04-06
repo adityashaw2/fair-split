@@ -2,13 +2,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
-interface Person { name: string; income?: number }
+interface Person { name: string }
 interface Room { name: string; description: string }
 interface GameConfig {
   people: [Person, Person, Person];
   rooms: [Room, Room, Room];
   totalRent: number;
-  useIncomeWeighting: boolean;
 }
 type Prices = [number, number, number];
 type Choices = [number, number, number];
@@ -33,7 +32,6 @@ interface GameState {
   result?: {
     assignment: Choices;
     prices: Prices;
-    incomeAdjustedPrices?: Prices;
   };
   createdAt: number;
 }
@@ -107,31 +105,6 @@ function fixRounding(prices: Prices, totalRent: number): Prices {
   return fixed;
 }
 
-function applyIncomeWeighting(
-  basePrices: Prices,
-  assignment: Choices,
-  incomes: [number, number, number],
-  totalRent: number,
-): Prices {
-  if (incomes.some((i) => !i || i <= 0)) return basePrices;
-  const totalIncome = incomes[0] + incomes[1] + incomes[2];
-  const idealPrices: Prices = [0, 0, 0];
-  for (let p = 0; p < 3; p++) {
-    idealPrices[assignment[p]] = (incomes[p] / totalIncome) * totalRent;
-  }
-  const blend = 0.7;
-  const blended: Prices = [0, 0, 0];
-  for (let r = 0; r < 3; r++) {
-    blended[r] = Math.round(basePrices[r] * (1 - blend) + idealPrices[r] * blend);
-  }
-  const sum = blended[0] + blended[1] + blended[2];
-  const scale = totalRent / sum;
-  return fixRounding(
-    [Math.round(blended[0] * scale), Math.round(blended[1] * scale), Math.round(blended[2] * scale)],
-    totalRent,
-  );
-}
-
 // ── Fallback allocation ──────────────────────────────────────────────
 
 function fallbackAllocation(
@@ -192,27 +165,13 @@ function tryAdvanceRound(game: GameState): void {
 
   if (envyFree) {
     const finalPrices = fixRounding(game.currentPrices, game.config.totalRent);
-    let incomeAdjustedPrices: Prices | undefined;
-    if (game.config.useIncomeWeighting) {
-      const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
-      if (incomes.every((i) => i > 0)) {
-        incomeAdjustedPrices = applyIncomeWeighting(finalPrices, choices, incomes, game.config.totalRent);
-      }
-    }
     game.status = "complete";
-    game.result = { assignment: choices, prices: finalPrices, incomeAdjustedPrices };
+    game.result = { assignment: choices, prices: finalPrices };
   } else if (game.currentRound >= AUTO_RESOLVE_AFTER) {
     // Enough data — auto-resolve
     const fb = fallbackAllocation(game.rounds, game.config.totalRent);
-    let incomeAdjustedPrices: Prices | undefined;
-    if (game.config.useIncomeWeighting) {
-      const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
-      if (incomes.every((i) => i > 0)) {
-        incomeAdjustedPrices = applyIncomeWeighting(fb.prices, fb.assignment, incomes, game.config.totalRent);
-      }
-    }
     game.status = "complete";
-    game.result = { assignment: fb.assignment, prices: fb.prices, incomeAdjustedPrices };
+    game.result = { assignment: fb.assignment, prices: fb.prices };
   } else {
     // Adaptive bisection
     const demand = [0, 0, 0];
@@ -388,15 +347,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
 
       const fb = fallbackAllocation(game.rounds, game.config.totalRent);
-      let incomeAdjustedPrices: Prices | undefined;
-      if (game.config.useIncomeWeighting) {
-        const incomes = game.config.people.map((p) => p.income || 0) as [number, number, number];
-        if (incomes.every((i) => i > 0)) {
-          incomeAdjustedPrices = applyIncomeWeighting(fb.prices, fb.assignment, incomes, game.config.totalRent);
-        }
-      }
       game.status = "complete";
-      game.result = { assignment: fb.assignment, prices: fb.prices, incomeAdjustedPrices };
+      game.result = { assignment: fb.assignment, prices: fb.prices };
       return res.json(stateForPlayer(game, playerIdx));
     }
 

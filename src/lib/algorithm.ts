@@ -125,42 +125,6 @@ export function autoResolve(
 /** Kept as alias for backwards compat */
 export const fallbackAllocation = autoResolve;
 
-/**
- * Apply income weighting to envy-free prices.
- */
-export function applyIncomeWeighting(
-  basePrices: Prices,
-  assignment: [number, number, number],
-  incomes: [number, number, number],
-  totalRent: number,
-): Prices {
-  if (incomes.some((i) => !i || i <= 0)) return basePrices;
-
-  const totalIncome = incomes[0] + incomes[1] + incomes[2];
-
-  const idealPrices: Prices = [0, 0, 0];
-  for (let p = 0; p < 3; p++) {
-    const room = assignment[p];
-    idealPrices[room] = (incomes[p] / totalIncome) * totalRent;
-  }
-
-  const blend = 0.7;
-  const blended: Prices = [0, 0, 0];
-  for (let r = 0; r < 3; r++) {
-    blended[r] = Math.round(
-      basePrices[r] * (1 - blend) + idealPrices[r] * blend,
-    );
-  }
-
-  const sum = blended[0] + blended[1] + blended[2];
-  const scale = totalRent / sum;
-  return [
-    Math.round(blended[0] * scale),
-    Math.round(blended[1] * scale),
-    Math.round(blended[2] * scale),
-  ];
-}
-
 export function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }

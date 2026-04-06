@@ -1,6 +1,5 @@
 export interface Person {
   name: string;
-  income?: number;
 }
 
 export interface Room {
@@ -12,7 +11,6 @@ export interface GameConfig {
   people: [Person, Person, Person];
   rooms: [Room, Room, Room];
   totalRent: number;
-  useIncomeWeighting: boolean;
 }
 
 export type Prices = [number, number, number];
@@ -31,7 +29,6 @@ export interface Allocation {
   assignment: [number, number, number];
   prices: Prices;
   rounds: RoundData[];
-  incomeAdjustedPrices?: Prices;
   /** true if found via direct envy-free, false if auto-resolved */
   exactEnvyFree?: boolean;
 }

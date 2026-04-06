@@ -37,7 +37,7 @@ export function MultiplayerView({
         config={config}
         allocation={{
           assignment: result.assignment,
-          prices: result.incomeAdjustedPrices || result.prices,
+          prices: result.prices,
           rounds: state.rounds,
         }}
         onRestart={onRestart}
