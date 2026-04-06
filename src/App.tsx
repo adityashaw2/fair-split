@@ -104,8 +104,6 @@ export default function App() {
       const newRounds = [...rounds, roundData];
       setRounds(newRounds);
 
-      console.log(`[FairSplit] Round ${roundNum}: choices=${JSON.stringify(choices)} prices=${JSON.stringify(currentPrices)} envyFree=${envyFree}`);
-
       if (envyFree) {
         setAllocation({
           assignment: choices,
@@ -122,9 +120,7 @@ export default function App() {
       } else {
         const step = getStepForRound(config.totalRent, roundNum);
         const next = computeNextPrices(currentPrices, choices, config.totalRent, step);
-        const fixed = fixRounding(next, config.totalRent);
-        console.log(`[FairSplit] -> step=${step} next=${JSON.stringify(next)} fixed=${JSON.stringify(fixed)}`);
-        setCurrentPrices(fixed);
+        setCurrentPrices(fixRounding(next, config.totalRent));
       }
     },
     [config, currentPrices, rounds],
@@ -201,7 +197,7 @@ export default function App() {
           config={config!}
           prices={currentPrices}
           round={rounds.length + 1}
-          totalRounds={MAX_ROUNDS}
+          totalRounds={SOFT_LIMIT}
           onSubmitChoices={handleChoices}
           onRestart={handleRestart}
         />
