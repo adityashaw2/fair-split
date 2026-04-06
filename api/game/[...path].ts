@@ -26,6 +26,7 @@ interface GameState {
   tokens: [string, string, string];
   currentRound: number;
   currentPrices: Prices;
+  currentStep: number;
   pendingChoices: Record<number, number>;
   rounds: RoundData[];
   status: "waiting" | "in-round" | "checkpoint" | "complete";
@@ -199,20 +200,33 @@ function tryAdvanceRound(game: GameState): void {
     }
     game.status = "complete";
     game.result = { assignment: choices, prices: finalPrices, incomeAdjustedPrices };
-  } else if (game.currentRound >= SOFT_LIMIT && game.currentRound % SOFT_LIMIT === 0) {
-    // Hit soft limit — enter checkpoint, but advance prices for next round
-    const step = getStepForRound(game.config.totalRent, game.currentRound);
-    const next = computeNextPrices(game.currentPrices, choices, game.config.totalRent, step);
-    game.currentPrices = fixRounding(next, game.config.totalRent);
-    game.currentRound++;
-    game.pendingChoices = {};
-    game.status = "checkpoint";
   } else {
-    const step = getStepForRound(game.config.totalRent, game.currentRound);
-    const next = computeNextPrices(game.currentPrices, choices, game.config.totalRent, step);
+    // Adaptive bisection: halve step when contested room flips
+    const demand = [0, 0, 0];
+    for (const r of choices) demand[r]++;
+    const overDemanded = demand.findIndex((d) => d > 1);
+
+    if (game.rounds.length > 1) {
+      const prevChoices = game.rounds[game.rounds.length - 2]?.choices;
+      if (prevChoices) {
+        const prevDemand = [0, 0, 0];
+        for (const r of prevChoices) prevDemand[r]++;
+        const prevOver = prevDemand.findIndex((d) => d > 1);
+        if (prevOver >= 0 && overDemanded >= 0 && prevOver !== overDemanded) {
+          game.currentStep = game.currentStep * 0.5;
+        }
+      }
+    }
+    game.currentStep = Math.max(game.currentStep, game.config.totalRent * 0.005);
+
+    const next = computeNextPrices(game.currentPrices, choices, game.config.totalRent, game.currentStep);
     game.currentPrices = fixRounding(next, game.config.totalRent);
     game.currentRound++;
     game.pendingChoices = {};
+
+    if (game.currentRound > SOFT_LIMIT && (game.currentRound - 1) % SOFT_LIMIT === 0) {
+      game.status = "checkpoint";
+    }
   }
 }
 
@@ -288,6 +302,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tokens,
         currentRound: 1,
         currentPrices: initialPrices,
+        currentStep: config.totalRent * 0.15,
         pendingChoices: {},
         rounds: [],
         status: "in-round",

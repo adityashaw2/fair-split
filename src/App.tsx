@@ -60,6 +60,7 @@ export default function App() {
   // Local mode state
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [currentPrices, setCurrentPrices] = useState<Prices>([0, 0, 0]);
+  const [currentStep, setCurrentStep] = useState(0);
   const [rounds, setRounds] = useState<RoundData[]>([]);
   const [allocation, setAllocation] = useState<Allocation | null>(null);
 
@@ -85,6 +86,7 @@ export default function App() {
     setConfig(cfg);
     const prices = initialPrices(cfg.totalRent);
     setCurrentPrices(prices);
+    setCurrentStep(cfg.totalRent * 0.15);
     setRounds([]);
     setAllocation(null);
     setPhase("round");
@@ -112,18 +114,34 @@ export default function App() {
         });
         setPhase("result");
       } else if (roundNum >= SOFT_LIMIT && roundNum % SOFT_LIMIT === 0) {
-        // Hit soft limit — ask if they want to continue or accept best
-        const step = getStepForRound(config.totalRent, roundNum);
-        const next = computeNextPrices(currentPrices, choices, config.totalRent, step);
+        // Hit soft limit — advance prices but pause for checkpoint
+        const next = computeNextPrices(currentPrices, choices, config.totalRent, currentStep);
         setCurrentPrices(fixRounding(next, config.totalRent));
         setPhase("checkpoint");
       } else {
-        const step = getStepForRound(config.totalRent, roundNum);
-        const next = computeNextPrices(currentPrices, choices, config.totalRent, step);
+        // Adaptive bisection: detect oscillation and halve step
+        let nextStep = currentStep;
+        const demand = [0, 0, 0];
+        for (const r of choices) demand[r]++;
+        const overDemanded = demand.findIndex((d) => d > 1);
+
+        if (rounds.length > 0) {
+          const prevDemand = [0, 0, 0];
+          for (const r of rounds[rounds.length - 1].choices) prevDemand[r]++;
+          const prevOver = prevDemand.findIndex((d) => d > 1);
+          // Oscillation: contested room flipped → we overshot → bisect
+          if (prevOver >= 0 && overDemanded >= 0 && prevOver !== overDemanded) {
+            nextStep = currentStep * 0.5;
+          }
+        }
+        nextStep = Math.max(nextStep, config.totalRent * 0.005);
+
+        const next = computeNextPrices(currentPrices, choices, config.totalRent, nextStep);
         setCurrentPrices(fixRounding(next, config.totalRent));
+        setCurrentStep(nextStep);
       }
     },
-    [config, currentPrices, rounds],
+    [config, currentPrices, currentStep, rounds],
   );
 
   // ── Checkpoint handlers ────────────────────────────────────────────
