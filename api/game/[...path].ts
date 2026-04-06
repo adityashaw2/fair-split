@@ -245,10 +245,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // GET /api/game/:id/state?token=xxx
-    const stateMatch = route.match(/^([a-z0-9]+)\/state$/);
-    if (stateMatch && req.method === "GET") {
-      const game = games.get(stateMatch[1]);
+    // GET /api/game/state?id=xxx&token=xxx
+    if (route === "state" && req.method === "GET") {
+      const id = req.query.id as string;
+      const game = games.get(id);
       if (!game) return res.status(404).json({ error: "Game not found or expired" });
 
       const token = req.query.token as string;
@@ -258,17 +258,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json(stateForPlayer(game, playerIdx));
     }
 
-    // POST /api/game/:id/choice
-    const choiceMatch = route.match(/^([a-z0-9]+)\/choice$/);
-    if (choiceMatch && req.method === "POST") {
-      const game = games.get(choiceMatch[1]);
+    // POST /api/game/choice { id, token, room }
+    if (route === "choice" && req.method === "POST") {
+      const { id, token, room } = req.body as { id: string; token: string; room: number };
+      const game = games.get(id);
       if (!game) return res.status(404).json({ error: "Game not found or expired" });
 
       if (game.status === "complete") {
         return res.status(400).json({ error: "Game already complete" });
       }
 
-      const { token, room } = req.body as { token: string; room: number };
       const playerIdx = game.tokens.indexOf(token);
       if (playerIdx === -1) return res.status(403).json({ error: "Invalid token" });
 
@@ -277,8 +276,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       game.pendingChoices[playerIdx] = room;
-
-      // Check if all 3 have submitted
       tryAdvanceRound(game);
 
       return res.json(stateForPlayer(game, playerIdx));

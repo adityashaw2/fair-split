@@ -43,7 +43,9 @@ export async function fetchGameState(
   gameId: string,
   token: string,
 ): Promise<GameStateResponse> {
-  const resp = await fetch(`${API_BASE}/${gameId}/state?token=${token}`);
+  const resp = await fetch(
+    `${API_BASE}/state?id=${encodeURIComponent(gameId)}&token=${encodeURIComponent(token)}`,
+  );
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     throw new Error(data.error || "Failed to fetch game state");
@@ -56,10 +58,10 @@ export async function submitChoice(
   token: string,
   room: number,
 ): Promise<GameStateResponse> {
-  const resp = await fetch(`${API_BASE}/${gameId}/choice`, {
+  const resp = await fetch(`${API_BASE}/choice`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, room }),
+    body: JSON.stringify({ id: gameId, token, room }),
   });
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
