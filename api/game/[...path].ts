@@ -37,18 +37,38 @@ interface GameState {
   createdAt: number;
 }
 
-// ── In-memory store ───────────────────────────────────────────────────
+// ── Persistent store (survives across warm invocations) ──────────────
 
-const games = new Map<string, GameState>();
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+
+const STORE_DIR = "/tmp/fair-split-games";
 const MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+if (!existsSync(STORE_DIR)) mkdirSync(STORE_DIR, { recursive: true });
+
+function loadGame(id: string): GameState | null {
+  const path = `${STORE_DIR}/${id}.json`;
+  if (!existsSync(path)) return null;
+  try {
+    const data = JSON.parse(readFileSync(path, "utf-8")) as GameState;
+    if (Date.now() - data.createdAt > MAX_AGE_MS) {
+      try { require("fs").unlinkSync(path); } catch {}
+      return null;
+    }
+    return data;
+  } catch { return null; }
+}
+
+function saveGame(game: GameState): void {
+  writeFileSync(`${STORE_DIR}/${game.id}.json`, JSON.stringify(game));
+}
+
+function deleteGame(id: string): void {
+  try { require("fs").unlinkSync(`${STORE_DIR}/${id}.json`); } catch {}
+}
 const SOFT_LIMIT = 15;
 
-function cleanup() {
-  const now = Date.now();
-  for (const [id, g] of games) {
-    if (now - g.createdAt > MAX_AGE_MS) games.delete(id);
-  }
-}
+// Cleanup handled per-load in loadGame
 
 function generateId(len = 8): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -258,8 +278,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  cleanup();
-
   const url = new URL(req.url || "/", `https://${req.headers.host}`);
   const route = url.pathname.replace(/^\/api\/game\/?/, "").replace(/\/$/, "");
 
@@ -298,7 +316,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: Date.now(),
       };
 
-      games.set(id, game);
+      saveGame(game);
 
       return res.json({
         gameId: id,
@@ -310,7 +328,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/game/state?id=xxx&token=xxx
     if (route === "state" && req.method === "GET") {
       const id = req.query.id as string;
-      const game = games.get(id);
+      const game = loadGame(id);
       if (!game) return res.status(404).json({ error: "Game not found or expired" });
 
       const token = req.query.token as string;
@@ -323,7 +341,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // POST /api/game/choice { id, token, room }
     if (route === "choice" && req.method === "POST") {
       const { id, token, room } = req.body as { id: string; token: string; room: number };
-      const game = games.get(id);
+      const game = loadGame(id);
       if (!game) return res.status(404).json({ error: "Game not found or expired" });
 
       if (game.status === "complete") {
@@ -339,6 +357,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       game.pendingChoices[playerIdx] = room;
       tryAdvanceRound(game);
+      saveGame(game);
 
       return res.json(stateForPlayer(game, playerIdx));
     }
@@ -346,7 +365,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // POST /api/game/continue { id, token }
     if (route === "continue" && req.method === "POST") {
       const { id, token } = req.body as { id: string; token: string };
-      const game = games.get(id);
+      const game = loadGame(id);
       if (!game) return res.status(404).json({ error: "Game not found or expired" });
       if (game.status !== "checkpoint") return res.status(400).json({ error: "Game not at checkpoint" });
 
@@ -355,13 +374,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       game.status = "in-round";
       game.currentRound++;
+      saveGame(game);
       return res.json(stateForPlayer(game, playerIdx));
     }
 
     // POST /api/game/accept { id, token }
     if (route === "accept" && req.method === "POST") {
       const { id, token } = req.body as { id: string; token: string };
-      const game = games.get(id);
+      const game = loadGame(id);
       if (!game) return res.status(404).json({ error: "Game not found or expired" });
       if (game.status !== "checkpoint") return res.status(400).json({ error: "Game not at checkpoint" });
 
@@ -371,6 +391,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const fb = fallbackAllocation(game.rounds, game.config.totalRent, game.n);
       game.status = "complete";
       game.result = { assignment: fb.assignment, prices: fb.prices };
+      saveGame(game);
       return res.json(stateForPlayer(game, playerIdx));
     }
 
